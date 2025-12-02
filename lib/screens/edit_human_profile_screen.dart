@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/user_profile.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
@@ -26,6 +29,11 @@ class _EditHumanProfileScreenState extends State<EditHumanProfileScreen> {
   late TextEditingController _emergencyContactController;
   late TextEditingController _emergencyPhoneController;
   late DateTime _selectedDate;
+  bool _isSaving = false;
+  
+  // Lists for allergies and conditions
+  late List<String> _allergies;
+  late List<String> _medicalConditions;
 
   @override
   void initState() {
@@ -39,8 +47,12 @@ class _EditHumanProfileScreenState extends State<EditHumanProfileScreen> {
     _emergencyContactController =
         TextEditingController(text: widget.profile.emergencyContact);
     _emergencyPhoneController =
-        TextEditingController(text: widget.profile.emergencyContactPhone);
-    _selectedDate = widget.profile.dateOfBirth;
+        TextEditingController(text: widget.profile.emergencyContactPhone ?? '');
+    _selectedDate = widget.profile.dateOfBirth ?? DateTime.now();
+    
+    // Initialize lists from profile
+    _allergies = List.from(widget.profile.allergies);
+    _medicalConditions = List.from(widget.profile.medicalConditions);
   }
 
   @override
@@ -53,6 +65,76 @@ class _EditHumanProfileScreenState extends State<EditHumanProfileScreen> {
     _emergencyContactController.dispose();
     _emergencyPhoneController.dispose();
     super.dispose();
+  }
+
+  void _addAllergy() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Allergy'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Enter allergy name',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    
+    if (result != null && result.trim().isNotEmpty) {
+      setState(() => _allergies.add(result.trim()));
+    }
+  }
+
+  void _removeAllergy(int index) {
+    setState(() => _allergies.removeAt(index));
+  }
+
+  void _addMedicalCondition() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Medical Condition'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Enter condition name',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    
+    if (result != null && result.trim().isNotEmpty) {
+      setState(() => _medicalConditions.add(result.trim()));
+    }
+  }
+
+  void _removeMedicalCondition(int index) {
+    setState(() => _medicalConditions.removeAt(index));
   }
 
   Future<void> _selectDate(BuildContext context) async {
@@ -79,6 +161,66 @@ class _EditHumanProfileScreenState extends State<EditHumanProfileScreen> {
       setState(() {
         _selectedDate = picked;
       });
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    setState(() => _isSaving = true);
+
+    try {
+      final authService = context.read<AuthService>();
+      final firestoreService = context.read<FirestoreService>();
+      final userId = authService.currentUser?.uid;
+
+      if (userId == null) {
+        throw 'User not logged in';
+      }
+
+      // Create updated profile
+      final updatedProfile = widget.profile.copyWith(
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        dateOfBirth: _selectedDate,
+        bloodGroup: _bloodGroupController.text.trim(),
+        address: _addressController.text.trim(),
+        emergencyContact: _emergencyContactController.text.trim(),
+        emergencyContactPhone: _emergencyPhoneController.text.trim(),
+        allergies: _allergies,
+        medicalConditions: _medicalConditions,
+        updatedAt: DateTime.now(),
+      );
+
+      // Save to Firestore
+      await firestoreService.updateUserProfile(userId, updatedProfile);
+
+      // Update display name in Firebase Auth if name changed
+      if (widget.profile.name != updatedProfile.name) {
+        await authService.currentUser?.updateDisplayName(updatedProfile.name);
+      }
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile updated successfully!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update profile: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -332,21 +474,79 @@ class _EditHumanProfileScreenState extends State<EditHumanProfileScreen> {
                 keyboardType: TextInputType.phone,
               ),
 
+              const SizedBox(height: AppSpacing.xxl),
+
+              // Allergies Section
+              Text(
+                'Allergies',
+                style: AppTextStyles.h3.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ..._allergies.asMap().entries.map(
+                    (entry) => Chip(
+                      label: Text(entry.value),
+                      deleteIcon: const Icon(Icons.close, size: 18),
+                      onDeleted: () => _removeAllergy(entry.key),
+                      backgroundColor: AppColors.tealAccent.withOpacity(0.2),
+                      labelStyle: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  ActionChip(
+                    label: const Text('+ Add Allergy'),
+                    onPressed: _addAllergy,
+                    backgroundColor: AppColors.tealAccent,
+                    labelStyle: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: AppSpacing.xxl),
+
+              // Medical Conditions Section
+              Text(
+                'Medical Conditions',
+                style: AppTextStyles.h3.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ..._medicalConditions.asMap().entries.map(
+                    (entry) => Chip(
+                      label: Text(entry.value),
+                      deleteIcon: const Icon(Icons.close, size: 18),
+                      onDeleted: () => _removeMedicalCondition(entry.key),
+                      backgroundColor: AppColors.error.withOpacity(0.2),
+                      labelStyle: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  ActionChip(
+                    label: const Text('+ Add Condition'),
+                    onPressed: _addMedicalCondition,
+                    backgroundColor: AppColors.error.withOpacity(0.7),
+                    labelStyle: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+
               const SizedBox(height: AppSpacing.xxxl),
 
               // Save Button
               CustomButton(
                 text: 'Save Changes',
-                onPressed: () {
-                  // TODO: Implement save functionality
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Profile updated successfully!'),
-                      backgroundColor: AppColors.success,
-                    ),
-                  );
-                },
+                onPressed: _saveProfile,
+                isLoading: _isSaving,
               ),
                   ],
                 ),

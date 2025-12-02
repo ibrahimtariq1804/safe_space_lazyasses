@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/appointment.dart';
+import '../services/firestore_service.dart';
+import '../services/notification_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
 import '../widgets/custom_button.dart';
 
-class AppointmentDetailScreen extends StatelessWidget {
+class AppointmentDetailScreen extends StatefulWidget {
   final Appointment appointment;
 
   const AppointmentDetailScreen({Key? key, required this.appointment})
       : super(key: key);
 
+  @override
+  State<AppointmentDetailScreen> createState() => _AppointmentDetailScreenState();
+}
+
+class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
+  bool _isProcessing = false;
+
   Color _getStatusColor() {
-    switch (appointment.status) {
+    switch (widget.appointment.status) {
       case AppointmentStatus.confirmed:
         return AppColors.success;
       case AppointmentStatus.pending:
@@ -22,11 +32,13 @@ class AppointmentDetailScreen extends StatelessWidget {
         return AppColors.tealAccent;
       case AppointmentStatus.cancelled:
         return AppColors.error;
+      case AppointmentStatus.delayed:
+        return Colors.orange;
     }
   }
 
   String _getStatusText() {
-    switch (appointment.status) {
+    switch (widget.appointment.status) {
       case AppointmentStatus.confirmed:
         return 'Confirmed';
       case AppointmentStatus.pending:
@@ -35,13 +47,60 @@ class AppointmentDetailScreen extends StatelessWidget {
         return 'Completed';
       case AppointmentStatus.cancelled:
         return 'Cancelled';
+      case AppointmentStatus.delayed:
+        return 'Delayed';
+    }
+  }
+
+  Future<void> _cancelAppointment() async {
+    setState(() => _isProcessing = true);
+    
+    try {
+      final firestoreService = context.read<FirestoreService>();
+      final notificationService = context.read<NotificationService>();
+      
+      // Update appointment status in Firestore
+      await firestoreService.updateAppointmentStatus(
+        widget.appointment.id,
+        AppointmentStatus.cancelled,
+      );
+      
+      // Cancel scheduled notifications
+      await notificationService.cancelAppointmentNotifications(widget.appointment.id);
+      
+      // Show cancellation notification
+      await notificationService.showAppointmentCancelledNotification(
+        doctorName: widget.appointment.doctorName,
+        appointmentTime: widget.appointment.dateTime,
+      );
+      
+      if (mounted) {
+        Navigator.of(context).pop(); // Close dialog
+        Navigator.of(context).pop(); // Go back to previous screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Appointment cancelled successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel appointment: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isPast = appointment.dateTime.isBefore(DateTime.now());
-    final isCancelled = appointment.status == AppointmentStatus.cancelled;
+    final isPast = widget.appointment.dateTime.isBefore(DateTime.now());
+    final isCancelled = widget.appointment.status == AppointmentStatus.cancelled;
 
     return Scaffold(
       appBar: AppBar(
@@ -118,12 +177,12 @@ class AppointmentDetailScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  appointment.doctorName,
+                                  widget.appointment.doctorName,
                                   style: AppTextStyles.h3,
                                 ),
                                 const SizedBox(height: AppSpacing.xs),
                                 Text(
-                                  appointment.doctorSpecialization,
+                                  widget.appointment.doctorSpecialization,
                                   style: AppTextStyles.bodyMedium.copyWith(
                                     color: AppColors.textSecondary,
                                   ),
@@ -161,27 +220,27 @@ class AppointmentDetailScreen extends StatelessWidget {
                             icon: Icons.calendar_today,
                             label: 'Date',
                             value: DateFormat('MMMM d, yyyy')
-                                .format(appointment.dateTime),
+                                .format(widget.appointment.dateTime),
                           ),
                           const Divider(),
                           _DetailRow(
                             icon: Icons.access_time,
                             label: 'Time',
                             value:
-                                DateFormat('h:mm a').format(appointment.dateTime),
+                                DateFormat('h:mm a').format(widget.appointment.dateTime),
                           ),
                           const Divider(),
                           _DetailRow(
                             icon: Icons.person_outline,
                             label: 'Patient',
-                            value: appointment.patientName,
+                            value: widget.appointment.patientName,
                           ),
-                          if (appointment.symptoms.isNotEmpty) ...[
+                          if (widget.appointment.symptoms.isNotEmpty) ...[
                             const Divider(),
                             _DetailRow(
                               icon: Icons.notes,
                               label: 'Reason',
-                              value: appointment.symptoms,
+                              value: widget.appointment.symptoms,
                             ),
                           ],
                         ],
@@ -203,14 +262,17 @@ class AppointmentDetailScreen extends StatelessWidget {
                     CustomButton(
                       text: 'Reschedule Appointment',
                       onPressed: () {
-                        // TODO: Implement reschedule
+                        if (_isProcessing) return;
+                        // Navigate back and prompt to book again
+                        Navigator.of(context).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Rescheduling feature coming soon!'),
+                            content: Text('Please book a new appointment to reschedule'),
                             backgroundColor: AppColors.tealAccent,
                           ),
                         );
                       },
+                      isLoading: _isProcessing,
                     ),
                     const SizedBox(height: AppSpacing.md),
                     OutlinedButton(
@@ -246,6 +308,7 @@ class AppointmentDetailScreen extends StatelessWidget {
   void _showCancelDialog(BuildContext context) {
     showDialog(
       context: context,
+      barrierDismissible: !_isProcessing,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardBackground,
         shape: RoundedRectangleBorder(
@@ -261,7 +324,7 @@ class AppointmentDetailScreen extends StatelessWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: _isProcessing ? null : () => Navigator.of(context).pop(),
             child: Text(
               'No, Keep it',
               style: AppTextStyles.bodyMedium.copyWith(
@@ -270,20 +333,20 @@ class AppointmentDetailScreen extends StatelessWidget {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Appointment cancelled'),
-                  backgroundColor: AppColors.error,
-                ),
-              );
-            },
+            onPressed: _isProcessing ? null : _cancelAppointment,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
             ),
-            child: const Text('Yes, Cancel'),
+            child: _isProcessing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Text('Yes, Cancel'),
           ),
         ],
       ),
@@ -340,4 +403,5 @@ class _DetailRow extends StatelessWidget {
     );
   }
 }
+
 

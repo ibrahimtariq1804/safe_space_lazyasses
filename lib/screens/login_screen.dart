@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
+import '../services/auth_service.dart';
 import 'signup_screen.dart';
 import 'main_navigation_screen.dart';
 
@@ -28,19 +30,103 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       
-      // Simulate API call
-      Future.delayed(const Duration(seconds: 2), () {
-        setState(() => _isLoading = false);
+      try {
+        final authService = context.read<AuthService>();
+        await authService.signInWithEmail(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+        
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => const MainNavigationScreen(),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString()),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      final authService = context.read<AuthService>();
+      final userCredential = await authService.signInWithGoogle();
+      
+      if (userCredential != null && mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => const MainNavigationScreen(),
           ),
         );
-      });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _handleForgotPassword() async {
+    if (_emailController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your email address'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final authService = context.read<AuthService>();
+      await authService.resetPassword(_emailController.text.trim());
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password reset email sent. Please check your inbox.'),
+            backgroundColor: AppColors.tealAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -136,7 +222,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: _handleForgotPassword,
                     child: Text(
                       'Forgot Password?',
                       style: AppTextStyles.bodySmall.copyWith(
@@ -176,8 +262,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Social Login Buttons
                 CustomButton(
                   text: 'Continue with Google',
-                  onPressed: () {},
+                  onPressed: () => _handleGoogleSignIn(),
                   isOutlined: true,
+                  isLoading: _isLoading,
                   icon: Icons.g_mobiledata_rounded,
                 ),
                 const SizedBox(height: AppSpacing.xxxl),

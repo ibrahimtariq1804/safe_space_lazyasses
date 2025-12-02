@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/user_profile.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
@@ -11,25 +14,95 @@ import 'medical_records_screen.dart';
 class HumanProfileScreen extends StatelessWidget {
   const HumanProfileScreen({Key? key}) : super(key: key);
 
-  UserProfile _getSampleProfile() {
-    return UserProfile(
-      id: '1',
-      name: 'John Doe',
-      email: 'john.doe@email.com',
-      phone: '+1 234 567 8900',
-      dateOfBirth: DateTime(1990, 5, 15),
-      bloodGroup: 'O+',
-      address: '123 Healthcare St, Medical City, MC 12345',
-      medicalConditions: ['Hypertension', 'Diabetes Type 2'],
-      allergies: ['Penicillin', 'Peanuts'],
-      emergencyContact: 'Jane Doe',
-      emergencyContactPhone: '+1 234 567 8901',
+  @override
+  Widget build(BuildContext context) {
+    final authService = context.read<AuthService>();
+    final firestoreService = context.read<FirestoreService>();
+    final userId = authService.currentUser?.uid;
+
+    if (userId == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('My Profile'),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.person_outline,
+                size: 80,
+                color: AppColors.textTertiary,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                'Please log in',
+                style: AppTextStyles.h3.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return StreamBuilder<UserProfile?>(
+      stream: firestoreService.getUserProfileStream(userId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('My Profile'),
+            ),
+            body: const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.tealAccent,
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('My Profile'),
+            ),
+            body: Center(
+              child: Text(
+                'Error loading profile: ${snapshot.error}',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.error,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final profile = snapshot.data;
+
+        if (profile == null) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('My Profile'),
+            ),
+            body: Center(
+              child: Text(
+                'Profile not found',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          );
+        }
+
+        return _buildProfileContent(context, profile);
+      },
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final profile = _getSampleProfile();
+  Widget _buildProfileContent(BuildContext context, UserProfile profile) {
 
     return Scaffold(
       appBar: AppBar(
@@ -120,14 +193,15 @@ class HumanProfileScreen extends StatelessWidget {
                   const SizedBox(height: AppSpacing.lg),
                   _InfoCard(
                     items: [
-                      {'label': 'Phone', 'value': profile.phone},
+                      {'label': 'Phone', 'value': profile.phone.isNotEmpty ? profile.phone : 'Not provided'},
                       {
                         'label': 'Date of Birth',
-                        'value': DateFormat('MMM d, yyyy')
-                            .format(profile.dateOfBirth)
+                        'value': profile.dateOfBirth != null
+                            ? DateFormat('MMM d, yyyy').format(profile.dateOfBirth!)
+                            : 'Not provided'
                       },
-                      {'label': 'Blood Group', 'value': profile.bloodGroup},
-                      {'label': 'Address', 'value': profile.address},
+                      {'label': 'Blood Group', 'value': profile.bloodGroup ?? 'Not provided'},
+                      {'label': 'Address', 'value': profile.address ?? 'Not provided'},
                     ],
                   ),
                 ],
@@ -184,61 +258,11 @@ class HumanProfileScreen extends StatelessWidget {
                   const SizedBox(height: AppSpacing.lg),
                   _InfoCard(
                     items: [
-                      {'label': 'Name', 'value': profile.emergencyContact},
+                      {'label': 'Name', 'value': profile.emergencyContact ?? 'Not provided'},
                       {
                         'label': 'Phone',
-                        'value': profile.emergencyContactPhone
+                        'value': profile.emergencyContactPhone ?? 'Not provided'
                       },
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: AppSpacing.xxxl),
-
-            // Health Overview
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Health Overview',
-                    style: AppTextStyles.h3,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _HealthStatCard(
-                          icon: Icons.favorite,
-                          label: 'Heart Rate',
-                          value: '72',
-                          unit: 'bpm',
-                          color: AppColors.error,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: _HealthStatCard(
-                          icon: Icons.monitor_weight,
-                          label: 'Weight',
-                          value: '75',
-                          unit: 'kg',
-                          color: AppColors.tealAccent,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: _HealthStatCard(
-                          icon: Icons.thermostat,
-                          label: 'Temp',
-                          value: '36.6',
-                          unit: '°C',
-                          color: Color(0xFF60A5FA),
-                        ),
-                      ),
                     ],
                   ),
                 ],
@@ -308,7 +332,7 @@ class HumanProfileScreen extends StatelessWidget {
 
             const SizedBox(height: AppSpacing.xxxl),
 
-            // Allergies & Conditions
+            // Allergies & Conditions - Dynamic from Firebase
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
               child: Row(
@@ -322,23 +346,22 @@ class HumanProfileScreen extends StatelessWidget {
                           style: AppTextStyles.h3,
                         ),
                         const SizedBox(height: AppSpacing.lg),
-                        _InfoChip(
-                          icon: Icons.warning_amber_rounded,
-                          label: 'Penicillin',
-                          color: AppColors.error,
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        _InfoChip(
-                          icon: Icons.warning_amber_rounded,
-                          label: 'Peanuts',
-                          color: AppColors.error,
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        _InfoChip(
-                          icon: Icons.warning_amber_rounded,
-                          label: 'Latex',
-                          color: AppColors.error,
-                        ),
+                        if (profile.allergies.isEmpty)
+                          Text(
+                            'No allergies recorded',
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          )
+                        else
+                          ...profile.allergies.map((allergy) => Padding(
+                                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                                child: _InfoChip(
+                                  icon: Icons.warning_amber_rounded,
+                                  label: allergy,
+                                  color: AppColors.error,
+                                ),
+                              )),
                       ],
                     ),
                   ),
@@ -348,27 +371,26 @@ class HumanProfileScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Chronic Conditions',
+                          'Medical Conditions',
                           style: AppTextStyles.h3,
                         ),
                         const SizedBox(height: AppSpacing.lg),
-                        _InfoChip(
-                          icon: Icons.medical_information,
-                          label: 'Type 2 Diabetes',
-                          color: Color(0xFFF59E0B),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        _InfoChip(
-                          icon: Icons.medical_information,
-                          label: 'Hypertension',
-                          color: Color(0xFFF59E0B),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        _InfoChip(
-                          icon: Icons.medical_information,
-                          label: 'Asthma',
-                          color: Color(0xFFF59E0B),
-                        ),
+                        if (profile.medicalConditions.isEmpty)
+                          Text(
+                            'No conditions recorded',
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          )
+                        else
+                          ...profile.medicalConditions.map((condition) => Padding(
+                                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                                child: _InfoChip(
+                                  icon: Icons.medical_information,
+                                  label: condition,
+                                  color: Color(0xFFF59E0B),
+                                ),
+                              )),
                       ],
                     ),
                   ),
@@ -573,77 +595,6 @@ class _MedicalInfoCard extends StatelessWidget {
   }
 }
 
-class _HealthStatCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String unit;
-  final Color color;
-
-  const _HealthStatCard({
-    Key? key,
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.unit,
-    required this.color,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.sm),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 24,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              label,
-              style: AppTextStyles.caption.copyWith(
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  value,
-                  style: AppTextStyles.h3.copyWith(
-                    color: color,
-                    fontSize: 20,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                Text(
-                  unit,
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _MedicalRecordItem extends StatelessWidget {
   final IconData icon;

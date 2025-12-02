@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/doctor.dart';
+import '../models/appointment.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
+import '../services/notification_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
@@ -22,6 +27,7 @@ class _AppointmentSchedulingScreenState
   DateTime _selectedDate = DateTime.now();
   String? _selectedTimeSlot;
   String _appointmentType = 'In-Person';
+  bool _isBooking = false;
 
   final List<String> _timeSlots = [
     '09:00 AM',
@@ -565,7 +571,7 @@ class _AppointmentSchedulingScreenState
           ? 'Confirm Appointment'
           : 'Select Time Slot',
       onPressed: _selectedTimeSlot != null
-          ? () => _showConfirmationDialog(context)
+          ? () => _confirmAndBookAppointment()
           : () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -578,8 +584,102 @@ class _AppointmentSchedulingScreenState
                 ),
               );
             },
+      isLoading: _isBooking,
       icon: Icons.check_circle_outline,
     );
+  }
+
+  Future<void> _confirmAndBookAppointment() async {
+    setState(() => _isBooking = true);
+
+    try {
+      final authService = context.read<AuthService>();
+      final firestoreService = context.read<FirestoreService>();
+      final currentUser = authService.currentUser;
+
+      if (currentUser == null) {
+        throw 'Please log in to book an appointment';
+      }
+
+      // Get user profile to get name
+      final userProfile = await firestoreService.getUserProfile(currentUser.uid);
+      final userName = userProfile?.name ?? currentUser.displayName ?? 'User';
+
+      // Combine date and time
+      final appointmentDateTime = _combineDateTime(_selectedDate, _selectedTimeSlot!);
+
+      // Create appointment
+      final appointment = Appointment(
+        id: '',
+        userId: currentUser.uid,
+        doctorId: widget.doctor.id,
+        doctorName: widget.doctor.name,
+        doctorSpecialization: widget.doctor.specialization,
+        dateTime: appointmentDateTime,
+        status: AppointmentStatus.confirmed,
+        patientName: userName,
+        symptoms: '',
+        notes: 'Type: $_appointmentType',
+        createdAt: DateTime.now(),
+      );
+
+      // Save to Firestore
+      final appointmentId = await firestoreService.createAppointment(appointment);
+
+      // Create notification in Firestore
+      await firestoreService.createNotification(
+        userId: currentUser.uid,
+        title: 'Appointment Confirmed',
+        message: 'Your appointment with ${widget.doctor.name} on ${DateFormat('MMM d, y').format(appointmentDateTime)} at $_selectedTimeSlot has been confirmed.',
+        type: 'appointment',
+      );
+
+      // Send local notification immediately
+      final notificationService = context.read<NotificationService>();
+      await notificationService.showAppointmentConfirmedNotification(
+        doctorName: widget.doctor.name,
+        appointmentTime: appointmentDateTime,
+        appointmentId: appointmentId,
+      );
+
+      // Schedule reminder notification (30 minutes before)
+      final appointmentWithId = appointment.copyWith(id: appointmentId);
+      await notificationService.scheduleAppointmentReminder(
+        appointment: appointmentWithId,
+      );
+
+      if (mounted) {
+        setState(() => _isBooking = false);
+        _showConfirmationDialog(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isBooking = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to book appointment: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  DateTime _combineDateTime(DateTime date, String timeSlot) {
+    // Parse time slot (e.g., "09:00 AM")
+    final timeParts = timeSlot.split(' ');
+    final hourMinute = timeParts[0].split(':');
+    int hour = int.parse(hourMinute[0]);
+    final minute = int.parse(hourMinute[1]);
+    final isPM = timeParts[1] == 'PM';
+
+    if (isPM && hour != 12) {
+      hour += 12;
+    } else if (!isPM && hour == 12) {
+      hour = 0;
+    }
+
+    return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
   void _showConfirmationDialog(BuildContext context) {

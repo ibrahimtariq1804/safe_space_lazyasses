@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/appointment.dart';
-import '../models/doctor.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
@@ -30,79 +32,7 @@ class _AppointmentsListScreenState extends State<AppointmentsListScreen>
     super.dispose();
   }
 
-  List<Appointment> _getSampleAppointments() {
-    final doctor1 = Doctor(
-      id: '1',
-      name: 'Dr. Sarah Johnson',
-      specialization: 'Cardiologist',
-      rating: 4.8,
-      experience: 15,
-      clinicLocation: 'City Hospital, Downtown',
-      imageUrl: '',
-      about: 'Experienced cardiologist',
-      availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-      isAvailable: true,
-    );
-
-    final doctor2 = Doctor(
-      id: '2',
-      name: 'Dr. Michael Chen',
-      specialization: 'Pediatrician',
-      rating: 4.9,
-      experience: 12,
-      clinicLocation: 'Children\'s Clinic, Uptown',
-      imageUrl: '',
-      about: 'Experienced pediatrician',
-      availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-      isAvailable: true,
-    );
-
-    return [
-      Appointment(
-        id: '1',
-        doctorId: '1',
-        doctorName: doctor1.name,
-        doctorSpecialization: doctor1.specialization,
-        dateTime: DateTime.now().add(const Duration(days: 1)),
-        status: AppointmentStatus.confirmed,
-        patientName: 'John Doe',
-        symptoms: 'Regular checkup',
-      ),
-      Appointment(
-        id: '2',
-        doctorId: '2',
-        doctorName: doctor2.name,
-        doctorSpecialization: doctor2.specialization,
-        dateTime: DateTime.now().add(const Duration(days: 3)),
-        status: AppointmentStatus.confirmed,
-        patientName: 'John Doe',
-        symptoms: 'Vaccination',
-      ),
-      Appointment(
-        id: '3',
-        doctorId: '1',
-        doctorName: doctor1.name,
-        doctorSpecialization: doctor1.specialization,
-        dateTime: DateTime.now().subtract(const Duration(days: 5)),
-        status: AppointmentStatus.completed,
-        patientName: 'John Doe',
-        symptoms: 'Chest pain consultation',
-      ),
-      Appointment(
-        id: '4',
-        doctorId: '2',
-        doctorName: doctor2.name,
-        doctorSpecialization: doctor2.specialization,
-        dateTime: DateTime.now().subtract(const Duration(days: 2)),
-        status: AppointmentStatus.cancelled,
-        patientName: 'John Doe',
-        symptoms: 'Flu symptoms',
-      ),
-    ];
-  }
-
-  List<Appointment> _getFilteredAppointments(String filter) {
-    final appointments = _getSampleAppointments();
+  List<Appointment> _getFilteredAppointments(List<Appointment> appointments, String filter) {
     final now = DateTime.now();
 
     switch (filter) {
@@ -110,7 +40,8 @@ class _AppointmentsListScreenState extends State<AppointmentsListScreen>
         return appointments
             .where((apt) =>
                 apt.dateTime.isAfter(now) &&
-                apt.status != AppointmentStatus.cancelled)
+                apt.status != AppointmentStatus.cancelled &&
+                apt.status != AppointmentStatus.completed)
             .toList()
           ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
       case 'past':
@@ -218,28 +149,30 @@ class _AppointmentsListScreenState extends State<AppointmentsListScreen>
   }
 
   Widget _buildAppointmentsList(String filter) {
-    final appointments = _getFilteredAppointments(filter);
+    final authService = context.read<AuthService>();
+    final firestoreService = context.read<FirestoreService>();
+    final userId = authService.currentUser?.uid;
 
-    if (appointments.isEmpty) {
+    if (userId == null) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.calendar_today_outlined,
+              Icons.person_outline,
               size: 80,
               color: AppColors.textTertiary,
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              'No $filter appointments',
+              'Please log in',
               style: AppTextStyles.h3.copyWith(
                 color: AppColors.textSecondary,
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Your $filter appointments will appear here',
+              'Log in to view your appointments',
               style: AppTextStyles.bodyMedium.copyWith(
                 color: AppColors.textTertiary,
               ),
@@ -249,19 +182,94 @@ class _AppointmentsListScreenState extends State<AppointmentsListScreen>
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      itemCount: appointments.length,
-      separatorBuilder: (context, index) => const SizedBox(height: AppSpacing.lg),
-      itemBuilder: (context, index) {
-        final appointment = appointments[index];
-        return _AppointmentCard(
-          appointment: appointment,
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => AppointmentDetailScreen(appointment: appointment),
-              ),
+    return StreamBuilder<List<Appointment>>(
+      stream: firestoreService.getUserAppointmentsStream(userId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: AppColors.tealAccent,
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 80,
+                  color: AppColors.error,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  'Error loading appointments',
+                  style: AppTextStyles.h3.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  snapshot.error.toString(),
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+
+        final allAppointments = snapshot.data ?? [];
+        final appointments = _getFilteredAppointments(allAppointments, filter);
+
+        if (appointments.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.calendar_today_outlined,
+                  size: 80,
+                  color: AppColors.textTertiary,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  'No $filter appointments',
+                  style: AppTextStyles.h3.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Your $filter appointments will appear here',
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          itemCount: appointments.length,
+          separatorBuilder: (context, index) => const SizedBox(height: AppSpacing.lg),
+          itemBuilder: (context, index) {
+            final appointment = appointments[index];
+            return _AppointmentCard(
+              appointment: appointment,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AppointmentDetailScreen(appointment: appointment),
+                  ),
+                );
+              },
             );
           },
         );
@@ -290,6 +298,8 @@ class _AppointmentCard extends StatelessWidget {
         return AppColors.tealAccent;
       case AppointmentStatus.cancelled:
         return AppColors.error;
+      case AppointmentStatus.delayed:
+        return Colors.orange;
     }
   }
 
@@ -303,6 +313,8 @@ class _AppointmentCard extends StatelessWidget {
         return 'Completed';
       case AppointmentStatus.cancelled:
         return 'Cancelled';
+      case AppointmentStatus.delayed:
+        return 'Delayed';
     }
   }
 

@@ -196,56 +196,6 @@ class PetProfileScreen extends StatelessWidget {
 
             const SizedBox(height: AppSpacing.xxxl),
 
-            // Pet Health Stats
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Health Stats',
-                    style: AppTextStyles.h3,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _PetHealthStatCard(
-                          icon: Icons.monitor_weight,
-                          label: 'Weight',
-                          value: '28',
-                          unit: 'kg',
-                          color: AppColors.tealAccent,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: _PetHealthStatCard(
-                          icon: Icons.cake,
-                          label: 'Next Visit',
-                          value: '15',
-                          unit: 'days',
-                          color: Color(0xFFF59E0B),
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: _PetHealthStatCard(
-                          icon: Icons.vaccines,
-                          label: 'Vaccines',
-                          value: '3/4',
-                          unit: 'done',
-                          color: AppColors.success,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: AppSpacing.xxxl),
-
             // Medical Records
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
@@ -636,77 +586,6 @@ class _VaccinationTimelineItem extends StatelessWidget {
   }
 }
 
-class _PetHealthStatCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String unit;
-  final Color color;
-
-  const _PetHealthStatCard({
-    Key? key,
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.unit,
-    required this.color,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.sm),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 24,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              label,
-              style: AppTextStyles.caption.copyWith(
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  value,
-                  style: AppTextStyles.h3.copyWith(
-                    color: color,
-                    fontSize: 20,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                Text(
-                  unit,
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _PetMedicalRecordItem extends StatelessWidget {
   final IconData icon;

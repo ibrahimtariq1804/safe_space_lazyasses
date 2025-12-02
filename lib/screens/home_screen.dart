@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
 import 'search_doctors_screen.dart';
 import 'pet_profile_screen.dart';
 import 'human_profile_screen.dart';
@@ -11,14 +14,67 @@ import 'appointments_list_screen.dart';
 import 'medical_records_screen.dart';
 import 'pet_medical_records_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   final bool isHumanMode;
 
   const HomeScreen({super.key, this.isHumanMode = true});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  DateTime? _lastPressedAt;
+
+  Future<bool> _onWillPop() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        ),
+        title: Text(
+          'Exit App',
+          style: AppTextStyles.h3.copyWith(color: Colors.white),
+        ),
+        content: Text(
+          'Are you sure you want to exit the application?',
+          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: AppTextStyles.button.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.tealAccent,
+            ),
+            child: const Text('Exit'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop();
+        if (shouldPop && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
@@ -108,10 +164,15 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
   }
 
   Widget _buildHeader(BuildContext context) {
+    final authService = context.read<AuthService>();
+    final firestoreService = context.read<FirestoreService>();
+    final userId = authService.currentUser?.uid;
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xxl),
       decoration: BoxDecoration(
@@ -131,7 +192,7 @@ class HomeScreen extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => isHumanMode
+                  builder: (_) => widget.isHumanMode
                       ? const HumanProfileScreen()
                       : const PetProfileScreen(),
                 ),
@@ -149,7 +210,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               child: Icon(
-                isHumanMode ? Icons.person : Icons.pets,
+                widget.isHumanMode ? Icons.person : Icons.pets,
                 size: 30,
                 color: AppColors.tealAccent,
               ),
@@ -157,34 +218,59 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.lg),
           
-          // User Info - Also clickable
+          // User Info - Also clickable - Dynamic from Firebase
           Expanded(
             child: InkWell(
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => isHumanMode
+                    builder: (_) => widget.isHumanMode
                         ? const HumanProfileScreen()
                         : const PetProfileScreen(),
                   ),
                 );
               },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Hello, John 👋',
-                    style: AppTextStyles.h3,
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    isHumanMode ? 'Human Healthcare' : 'Pet Healthcare',
-                    style: AppTextStyles.bodySmall.copyWith(
-                      color: AppColors.tealAccent,
+              child: userId != null
+                  ? FutureBuilder(
+                      future: firestoreService.getUserProfile(userId),
+                      builder: (context, snapshot) {
+                        final userName = snapshot.data?.name ?? authService.currentUser?.displayName ?? 'User';
+                        final firstName = userName.split(' ').first;
+                        
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Hello, $firstName 👋',
+                              style: AppTextStyles.h3,
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                            Text(
+                              widget.isHumanMode ? 'Human Healthcare' : 'Pet Healthcare',
+                              style: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.tealAccent,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Hello 👋',
+                          style: AppTextStyles.h3,
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          widget.isHumanMode ? 'Human Healthcare' : 'Pet Healthcare',
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.tealAccent,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
             ),
           ),
           
@@ -239,7 +325,7 @@ class HomeScreen extends StatelessWidget {
         'onTap': () {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => SearchDoctorsScreen(isHumanMode: isHumanMode),
+              builder: (_) => SearchDoctorsScreen(isHumanMode: widget.isHumanMode),
             ),
           );
         },
@@ -251,7 +337,7 @@ class HomeScreen extends StatelessWidget {
         'onTap': () {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => isHumanMode 
+              builder: (_) => widget.isHumanMode 
                   ? const MedicalRecordsScreen()
                   : const PetMedicalRecordsScreen(),
             ),
@@ -271,13 +357,13 @@ class HomeScreen extends StatelessWidget {
         },
       },
       {
-        'icon': isHumanMode ? Icons.person : Icons.pets,
-        'title': isHumanMode ? 'My\nProfile' : 'Pet\nProfile',
+        'icon': widget.isHumanMode ? Icons.person : Icons.pets,
+        'title': widget.isHumanMode ? 'My\nProfile' : 'Pet\nProfile',
         'color': Color(0xFFF59E0B),
         'onTap': () {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => isHumanMode
+              builder: (_) => widget.isHumanMode
                   ? const HumanProfileScreen()
                   : const PetProfileScreen(),
             ),
@@ -348,7 +434,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                  isHumanMode
+                  widget.isHumanMode
                       ? 'Stay hydrated! Drink at least 8 glasses of water daily.'
                       : 'Regular grooming keeps your pet healthy and happy.',
                   style: AppTextStyles.bodySmall,
