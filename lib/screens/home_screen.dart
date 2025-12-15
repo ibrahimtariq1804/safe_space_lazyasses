@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../models/appointment.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
@@ -8,7 +10,7 @@ import '../services/firestore_service.dart';
 import 'search_doctors_screen.dart';
 import 'pet_profile_screen.dart';
 import 'human_profile_screen.dart';
-import 'telemedicine_chat_screen.dart';
+import 'chat_inbox_screen.dart';
 import 'notifications_screen.dart';
 import 'appointments_list_screen.dart';
 import 'medical_records_screen.dart';
@@ -24,8 +26,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  DateTime? _lastPressedAt;
-
   Future<bool> _onWillPop() async {
     final result = await showDialog<bool>(
       context: context,
@@ -351,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> {
         'onTap': () {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => const TelemedicineChatScreen(),
+              builder: (_) => ChatInboxScreen(isHumanMode: widget.isHumanMode),
             ),
           );
         },
@@ -448,95 +448,137 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildAppointmentCard(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const AppointmentsListScreen(),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    final authService = context.read<AuthService>();
+    final firestoreService = context.read<FirestoreService>();
+    final userId = authService.currentUser?.uid;
+
+    if (userId == null) {
+      return const SizedBox.shrink();
+    }
+
+    return StreamBuilder<List<Appointment>>(
+      stream: firestoreService.getUserAppointmentsStream(userId),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        // Filter by doctor type based on current mode
+        final doctorType = widget.isHumanMode ? 'human' : 'pet';
+        final relevantAppointments = snapshot.data!
+            .where((apt) => apt.doctorType == doctorType)
+            .toList();
+
+        if (relevantAppointments.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        // Get next upcoming confirmed appointment
+        final now = DateTime.now();
+        final upcoming = relevantAppointments
+            .where((apt) =>
+                apt.status == AppointmentStatus.confirmed &&
+                apt.dateTime.isAfter(now))
+            .toList()
+          ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+        if (upcoming.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final nextAppointment = upcoming.first;
+
+        return Card(
+          child: InkWell(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const AppointmentsListScreen(),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: AppColors.graphite,
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                    ),
-                    child: const Icon(
-                      Icons.person,
-                      color: AppColors.tealAccent,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Dr. Sarah Johnson',
-                          style: AppTextStyles.h4,
+                  Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: AppColors.graphite,
+                          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                         ),
-                        const SizedBox(height: AppSpacing.xs),
-                        Text(
-                          'Cardiologist',
+                        child: const Icon(
+                          Icons.person,
+                          color: AppColors.tealAccent,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Dr. ${nextAppointment.doctorName}',
+                              style: AppTextStyles.h4,
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                            Text(
+                              nextAppointment.doctorSpecialization,
+                              style: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  const Divider(),
+                  const SizedBox(height: AppSpacing.sm),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: 16,
+                        color: AppColors.textTertiary,
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Text(
+                        '${DateFormat('MMM d').format(nextAppointment.dateTime)}, ${DateFormat('h:mm a').format(nextAppointment.dateTime)}',
+                        style: AppTextStyles.bodySmall,
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md,
+                          vertical: AppSpacing.xs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
+                        ),
+                        child: Text(
+                          'Confirmed',
                           style: AppTextStyles.bodySmall.copyWith(
-                            color: AppColors.textSecondary,
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              const Divider(),
-              const SizedBox(height: AppSpacing.sm),
-              Row(
-                children: [
-                  Icon(
-                    Icons.calendar_today,
-                    size: 16,
-                    color: AppColors.textTertiary,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    'Tomorrow, 10:00 AM',
-                    style: AppTextStyles.bodySmall,
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md,
-                      vertical: AppSpacing.xs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
-                    ),
-                    child: Text(
-                      'Confirmed',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.success,
-                        fontWeight: FontWeight.w600,
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

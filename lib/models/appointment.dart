@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum AppointmentStatus {
-  pending,
-  confirmed,
+  pending,    // Newly booked, waiting for doctor confirmation
+  confirmed,  // Accepted by doctor
   completed,
-  cancelled,
+  cancelled,  // Cancelled by patient
+  rejected,   // Rejected by doctor
   delayed,
 }
 
@@ -19,6 +20,9 @@ class Appointment {
   final String patientName;
   final String symptoms;
   final String? notes;
+  final String? rejectionReason; // Reason if doctor rejects
+  final String? patientPhone;    // Patient contact
+  final String doctorType;       // 'human' or 'pet'
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -33,6 +37,9 @@ class Appointment {
     required this.patientName,
     this.symptoms = '',
     this.notes,
+    this.rejectionReason,
+    this.patientPhone,
+    this.doctorType = 'human',
     required this.createdAt,
     this.updatedAt,
   });
@@ -49,6 +56,9 @@ class Appointment {
       'patientName': patientName,
       'symptoms': symptoms,
       'notes': notes,
+      'rejectionReason': rejectionReason,
+      'patientPhone': patientPhone,
+      'doctorType': doctorType,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
     };
@@ -70,6 +80,9 @@ class Appointment {
       patientName: map['patientName'] ?? '',
       symptoms: map['symptoms'] ?? '',
       notes: map['notes'],
+      rejectionReason: map['rejectionReason'],
+      patientPhone: map['patientPhone'],
+      doctorType: map['doctorType'] ?? 'human',
       createdAt: map['createdAt'] != null
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
@@ -91,6 +104,8 @@ class Appointment {
     String? patientName,
     String? symptoms,
     String? notes,
+    String? rejectionReason,
+    String? patientPhone,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -105,6 +120,8 @@ class Appointment {
       patientName: patientName ?? this.patientName,
       symptoms: symptoms ?? this.symptoms,
       notes: notes ?? this.notes,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      patientPhone: patientPhone ?? this.patientPhone,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

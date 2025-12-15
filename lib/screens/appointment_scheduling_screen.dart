@@ -5,7 +5,6 @@ import '../models/doctor.dart';
 import '../models/appointment.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
-import '../services/notification_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
@@ -28,6 +27,8 @@ class _AppointmentSchedulingScreenState
   String? _selectedTimeSlot;
   String _appointmentType = 'In-Person';
   bool _isBooking = false;
+  List<String> _bookedSlots = [];
+  bool _isLoadingSlots = false;
 
   final List<String> _timeSlots = [
     '09:00 AM',
@@ -43,6 +44,45 @@ class _AppointmentSchedulingScreenState
     '04:00 PM',
     '04:30 PM',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBookedSlots();
+  }
+
+  Future<void> _loadBookedSlots() async {
+    setState(() => _isLoadingSlots = true);
+    try {
+      final firestoreService = context.read<FirestoreService>();
+      final bookedSlots = await firestoreService.getBookedSlotsForDoctor(
+        widget.doctor.id,
+        _selectedDate,
+      );
+      if (mounted) {
+        setState(() {
+          _bookedSlots = bookedSlots;
+          _isLoadingSlots = false;
+          // Clear selected time slot if it's now booked
+          if (_selectedTimeSlot != null && _bookedSlots.contains(_selectedTimeSlot)) {
+            _selectedTimeSlot = null;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingSlots = false);
+      }
+    }
+  }
+
+  void _onDateSelected(DateTime date) {
+    setState(() {
+      _selectedDate = date;
+      _selectedTimeSlot = null; // Reset time slot when date changes
+    });
+    _loadBookedSlots(); // Reload booked slots for new date
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -367,7 +407,7 @@ class _AppointmentSchedulingScreenState
               return Padding(
                 padding: const EdgeInsets.only(right: AppSpacing.md),
                 child: InkWell(
-                  onTap: () => setState(() => _selectedDate = date),
+                  onTap: () => _onDateSelected(date),
                   borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -453,9 +493,24 @@ class _AppointmentSchedulingScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Available Time Slots',
-          style: AppTextStyles.h3.copyWith(fontSize: 18),
+        Row(
+          children: [
+            Text(
+              'Available Time Slots',
+              style: AppTextStyles.h3.copyWith(fontSize: 18),
+            ),
+            if (_isLoadingSlots) ...[
+              const SizedBox(width: AppSpacing.md),
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.tealAccent),
+                ),
+              ),
+            ],
+          ],
         ),
         const SizedBox(height: AppSpacing.lg),
         Wrap(
@@ -464,9 +519,11 @@ class _AppointmentSchedulingScreenState
           children: _timeSlots.map((time) {
             final isSelected = _selectedTimeSlot == time;
             final isPast = _isPastTime(time);
+            final isBooked = _bookedSlots.contains(time);
+            final isUnavailable = isPast || isBooked;
 
             return InkWell(
-              onTap: isPast ? null : () => setState(() => _selectedTimeSlot = time),
+              onTap: isUnavailable ? null : () => setState(() => _selectedTimeSlot = time),
               borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
@@ -487,16 +544,18 @@ class _AppointmentSchedulingScreenState
                       : null,
                   color: isSelected
                       ? null
-                      : isPast
+                      : isUnavailable
                           ? AppColors.cardBackground.withValues(alpha: 0.5)
                           : AppColors.cardBackground,
                   borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                   border: Border.all(
                     color: isSelected
                         ? Colors.transparent
-                        : isPast
-                            ? AppColors.inputBorder.withValues(alpha: 0.3)
-                            : AppColors.inputBorder,
+                        : isBooked
+                            ? AppColors.error.withValues(alpha: 0.3)
+                            : isPast
+                                ? AppColors.inputBorder.withValues(alpha: 0.3)
+                                : AppColors.inputBorder,
                     width: 1,
                   ),
                   boxShadow: isSelected
@@ -513,25 +572,29 @@ class _AppointmentSchedulingScreenState
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.access_time,
+                      isBooked ? Icons.block : Icons.access_time,
                       size: 18,
                       color: isSelected
                           ? AppColors.deepCharcoal
-                          : isPast
-                              ? AppColors.textTertiary.withValues(alpha: 0.5)
-                              : AppColors.textSecondary,
+                          : isBooked
+                              ? AppColors.error.withValues(alpha: 0.5)
+                              : isPast
+                                  ? AppColors.textTertiary.withValues(alpha: 0.5)
+                                  : AppColors.textSecondary,
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     Text(
-                      time,
+                      isBooked ? '$time (Booked)' : time,
                       style: AppTextStyles.bodyMedium.copyWith(
                         color: isSelected
                             ? AppColors.deepCharcoal
-                            : isPast
-                                ? AppColors.textTertiary.withValues(alpha: 0.5)
-                                : AppColors.textPrimary,
+                            : isBooked
+                                ? AppColors.error.withValues(alpha: 0.5)
+                                : isPast
+                                    ? AppColors.textTertiary.withValues(alpha: 0.5)
+                                    : AppColors.textPrimary,
                         fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                        decoration: isPast ? TextDecoration.lineThrough : null,
+                        decoration: isUnavailable ? TextDecoration.lineThrough : null,
                       ),
                     ),
                   ],
@@ -608,7 +671,11 @@ class _AppointmentSchedulingScreenState
       // Combine date and time
       final appointmentDateTime = _combineDateTime(_selectedDate, _selectedTimeSlot!);
 
-      // Create appointment
+      // Get doctor profile to fetch doctor type
+      final doctorProfile = await firestoreService.getDoctorProfile(widget.doctor.id);
+      final doctorType = doctorProfile?.doctorType ?? 'human';
+
+      // Create appointment with pending status (awaiting doctor confirmation)
       final appointment = Appointment(
         id: '',
         userId: currentUser.uid,
@@ -616,37 +683,28 @@ class _AppointmentSchedulingScreenState
         doctorName: widget.doctor.name,
         doctorSpecialization: widget.doctor.specialization,
         dateTime: appointmentDateTime,
-        status: AppointmentStatus.confirmed,
+        status: AppointmentStatus.pending, // Pending until doctor accepts
         patientName: userName,
+        patientPhone: userProfile?.phone,
         symptoms: '',
         notes: 'Type: $_appointmentType',
+        doctorType: doctorType,
         createdAt: DateTime.now(),
       );
 
       // Save to Firestore
-      final appointmentId = await firestoreService.createAppointment(appointment);
+      await firestoreService.createAppointment(appointment);
 
-      // Create notification in Firestore
+      // Create notification for doctor only
       await firestoreService.createNotification(
-        userId: currentUser.uid,
-        title: 'Appointment Confirmed',
-        message: 'Your appointment with ${widget.doctor.name} on ${DateFormat('MMM d, y').format(appointmentDateTime)} at $_selectedTimeSlot has been confirmed.',
+        userId: widget.doctor.id,
+        title: 'New Appointment Request',
+        message: '$userName has requested an appointment on ${DateFormat('MMM d, y').format(appointmentDateTime)} at $_selectedTimeSlot.',
         type: 'appointment',
       );
 
-      // Send local notification immediately
-      final notificationService = context.read<NotificationService>();
-      await notificationService.showAppointmentConfirmedNotification(
-        doctorName: widget.doctor.name,
-        appointmentTime: appointmentDateTime,
-        appointmentId: appointmentId,
-      );
-
-      // Schedule reminder notification (30 minutes before)
-      final appointmentWithId = appointment.copyWith(id: appointmentId);
-      await notificationService.scheduleAppointmentReminder(
-        appointment: appointmentWithId,
-      );
+      // Note: Notification to patient will be sent when doctor accepts the appointment
+      // Local notifications and reminders will also be scheduled at that time
 
       if (mounted) {
         setState(() => _isBooking = false);
@@ -714,27 +772,27 @@ class _AppointmentSchedulingScreenState
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppColors.success.withValues(alpha: 0.2),
-                        AppColors.success.withValues(alpha: 0.1),
+                        AppColors.tealAccent.withValues(alpha: 0.2),
+                        AppColors.tealAccent.withValues(alpha: 0.1),
                       ],
                     ),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
-                    Icons.check_circle,
-                    color: AppColors.success,
+                    Icons.schedule,
+                    color: AppColors.tealAccent,
                     size: 60,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xl),
                 Text(
-                  'Appointment Confirmed!',
+                  'Appointment Requested!',
                   style: AppTextStyles.h2.copyWith(fontSize: 22),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'Your appointment has been successfully scheduled',
+                  'Your request has been sent. Waiting for doctor confirmation.',
                   style: AppTextStyles.bodyMedium.copyWith(
                     color: AppColors.textSecondary,
                   ),

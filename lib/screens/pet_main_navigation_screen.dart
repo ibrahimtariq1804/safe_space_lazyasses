@@ -2,25 +2,25 @@ import 'package:flutter/material.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
-import 'home_screen.dart';
+import 'pet_home_screen.dart';
 import 'search_doctors_screen.dart';
-import 'appointments_list_screen.dart';
-import 'user_type_selection_screen.dart';
+import 'pet_appointments_list_screen.dart';
 import 'notifications_screen.dart';
+import 'user_type_selection_screen.dart';
 
-class MainNavigationScreen extends StatefulWidget {
+class PetMainNavigationScreen extends StatefulWidget {
   final int initialIndex;
 
-  const MainNavigationScreen({
+  const PetMainNavigationScreen({
     Key? key,
     this.initialIndex = 0,
   }) : super(key: key);
 
   @override
-  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+  State<PetMainNavigationScreen> createState() => _PetMainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen>
+class _PetMainNavigationScreenState extends State<PetMainNavigationScreen>
     with TickerProviderStateMixin {
   late int _currentIndex;
   late List<AnimationController> _animationControllers;
@@ -61,9 +61,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   }
 
   late final List<Widget> _screens = [
-    const HomeScreen(isHumanMode: true),
-    const SearchDoctorsScreen(isHumanMode: true),
-    const AppointmentsListScreen(),
+    const PetHomeScreen(),
+    const SearchDoctorsScreen(isHumanMode: false), // Pet doctors only
+    const PetAppointmentsListScreen(),
     const NotificationsScreen(),
     const UserTypeSelectionScreen(),
   ];
@@ -147,10 +147,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _buildNavItem(0, Icons.home_rounded, 'Home'),
-                    _buildNavItem(1, Icons.search_rounded, 'Search'),
-                    _buildNavItem(2, Icons.calendar_month_rounded, 'Bookings'),
+                    _buildNavItem(1, Icons.pets_rounded, 'Vets'),
+                    _buildNavItem(2, Icons.calendar_month_rounded, 'Visits'),
                     _buildNavItem(3, Icons.notifications_rounded, 'Alerts'),
-                    _buildNavItem(4, Icons.person_rounded, 'Profile'),
+                    _buildNavItem(4, Icons.pets_rounded, 'Pet'),
                   ],
                 ),
               ],
@@ -200,55 +200,45 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Glow effect
-                            if (isSelected || isHovered)
+                            if (isSelected)
                               Container(
-                                width: 26,
-                                height: 26,
+                                width: 30,
+                                height: 30,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppColors.tealAccent.withValues(
-                                        alpha: isSelected ? 0.6 : 0.3,
-                                      ),
-                                      blurRadius: isSelected ? 10 : 6,
-                                      spreadRadius: isSelected ? 2 : 1,
+                                      color: AppColors.tealAccent.withValues(alpha: 0.4),
+                                      blurRadius: 15,
+                                      spreadRadius: 2,
                                     ),
                                   ],
                                 ),
                               ),
-                            // Icon
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              child: Icon(
-                                icon,
-                                size: 24,
-                                color: isSelected
-                                    ? AppColors.tealAccent
-                                    : isHovered
-                                        ? AppColors.tealAccent
-                                            .withValues(alpha: 0.7)
-                                        : AppColors.textTertiary,
-                              ),
+                            Icon(
+                              icon,
+                              color: isSelected
+                                  ? AppColors.tealAccent
+                                  : (isHovered
+                                      ? AppColors.textPrimary
+                                      : AppColors.textSecondary),
+                              size: 24,
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 4),
                       // Label
                       AnimatedDefaultTextStyle(
                         duration: const Duration(milliseconds: 200),
                         style: AppTextStyles.caption.copyWith(
                           color: isSelected
                               ? AppColors.tealAccent
-                              : isHovered
-                                  ? AppColors.tealAccent.withValues(alpha: 0.7)
-                                  : AppColors.textTertiary,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w400,
-                          fontSize: isSelected ? 10 : 9,
-                          height: 1.2,
+                              : (isHovered
+                                  ? AppColors.textPrimary
+                                  : AppColors.textSecondary),
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          fontSize: 10,
                         ),
                         child: Text(label),
                       ),
@@ -263,4 +253,3 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 }
-

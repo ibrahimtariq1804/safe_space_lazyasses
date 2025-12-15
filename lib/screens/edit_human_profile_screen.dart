@@ -9,6 +9,7 @@ import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
+import 'splash_screen.dart';
 
 class EditHumanProfileScreen extends StatefulWidget {
   final UserProfile profile;
@@ -548,6 +549,18 @@ class _EditHumanProfileScreenState extends State<EditHumanProfileScreen> {
                 onPressed: _saveProfile,
                 isLoading: _isSaving,
               ),
+              
+              const SizedBox(height: AppSpacing.lg),
+              
+              // Sign Out Button
+              CustomButton(
+                text: 'Sign Out',
+                onPressed: () => _handleSignOut(context),
+                isOutlined: true,
+                icon: Icons.logout,
+              ),
+              
+              const SizedBox(height: 120), // Extra padding to avoid navbar overlap
                   ],
                 ),
               ),
@@ -556,6 +569,58 @@ class _EditHumanProfileScreenState extends State<EditHumanProfileScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _handleSignOut(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        ),
+        title: Text(
+          'Sign Out',
+          style: AppTextStyles.h3,
+        ),
+        content: Text(
+          'Are you sure you want to sign out?',
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: AppTextStyles.button.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+            ),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      final authService = context.read<AuthService>();
+      await authService.signOut();
+      
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const SplashScreen()),
+          (route) => false,
+        );
+      }
+    }
   }
 }
 

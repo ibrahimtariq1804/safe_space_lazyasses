@@ -10,6 +10,7 @@ import '../utils/app_text_styles.dart';
 import 'edit_human_profile_screen.dart';
 import 'appointments_list_screen.dart';
 import 'medical_records_screen.dart';
+import 'splash_screen.dart';
 
 class HumanProfileScreen extends StatelessWidget {
   const HumanProfileScreen({Key? key}) : super(key: key);
@@ -117,6 +118,11 @@ class HumanProfileScreen extends StatelessWidget {
                 ),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _handleSignOut(context),
+            tooltip: 'Sign Out',
           ),
         ],
       ),
@@ -463,6 +469,58 @@ class HumanProfileScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _handleSignOut(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        ),
+        title: Text(
+          'Sign Out',
+          style: AppTextStyles.h3,
+        ),
+        content: Text(
+          'Are you sure you want to sign out?',
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: AppTextStyles.button.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+            ),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && context.mounted) {
+      final authService = context.read<AuthService>();
+      await authService.signOut();
+      
+      if (context.mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const SplashScreen()),
+          (route) => false,
+        );
+      }
+    }
   }
 }
 

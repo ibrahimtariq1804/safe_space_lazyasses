@@ -53,7 +53,9 @@ class _AppointmentsListScreenState extends State<AppointmentsListScreen>
           ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
       case 'cancelled':
         return appointments
-            .where((apt) => apt.status == AppointmentStatus.cancelled)
+            .where((apt) => 
+                apt.status == AppointmentStatus.cancelled ||
+                apt.status == AppointmentStatus.rejected)
             .toList()
           ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
       default:
@@ -224,7 +226,11 @@ class _AppointmentsListScreenState extends State<AppointmentsListScreen>
         }
 
         final allAppointments = snapshot.data ?? [];
-        final appointments = _getFilteredAppointments(allAppointments, filter);
+        // Filter ONLY human appointments (doctorType == 'human')
+        final humanAppointments = allAppointments
+            .where((apt) => apt.doctorType == 'human')
+            .toList();
+        final appointments = _getFilteredAppointments(humanAppointments, filter);
 
         if (appointments.isEmpty) {
           return Center(
@@ -297,6 +303,8 @@ class _AppointmentCard extends StatelessWidget {
       case AppointmentStatus.completed:
         return AppColors.tealAccent;
       case AppointmentStatus.cancelled:
+        return AppColors.textTertiary;
+      case AppointmentStatus.rejected:
         return AppColors.error;
       case AppointmentStatus.delayed:
         return Colors.orange;
@@ -313,6 +321,8 @@ class _AppointmentCard extends StatelessWidget {
         return 'Completed';
       case AppointmentStatus.cancelled:
         return 'Cancelled';
+      case AppointmentStatus.rejected:
+        return 'Rejected';
       case AppointmentStatus.delayed:
         return 'Delayed';
     }

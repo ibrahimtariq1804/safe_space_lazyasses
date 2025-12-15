@@ -1,26 +1,25 @@
 import 'package:flutter/material.dart';
-import '../utils/app_colors.dart';
-import '../utils/app_spacing.dart';
-import '../utils/app_text_styles.dart';
-import 'home_screen.dart';
-import 'search_doctors_screen.dart';
-import 'appointments_list_screen.dart';
-import 'user_type_selection_screen.dart';
-import 'notifications_screen.dart';
+import '../../utils/app_colors.dart';
+import '../../utils/app_spacing.dart';
+import '../../utils/app_text_styles.dart';
+import 'doctor_home_screen.dart';
+import 'doctor_appointments_screen.dart';
+import 'doctor_notifications_screen.dart';
+import 'doctor_profile_screen.dart';
 
-class MainNavigationScreen extends StatefulWidget {
+class DoctorMainNavigationScreen extends StatefulWidget {
   final int initialIndex;
 
-  const MainNavigationScreen({
+  const DoctorMainNavigationScreen({
     Key? key,
     this.initialIndex = 0,
   }) : super(key: key);
 
   @override
-  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+  State<DoctorMainNavigationScreen> createState() => _DoctorMainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen>
+class _DoctorMainNavigationScreenState extends State<DoctorMainNavigationScreen>
     with TickerProviderStateMixin {
   late int _currentIndex;
   late List<AnimationController> _animationControllers;
@@ -34,7 +33,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
     // Create animation controllers for each nav item
     _animationControllers = List.generate(
-      5,
+      4,
       (index) => AnimationController(
         duration: const Duration(milliseconds: 300),
         vsync: this,
@@ -60,12 +59,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     super.dispose();
   }
 
-  late final List<Widget> _screens = [
-    const HomeScreen(isHumanMode: true),
-    const SearchDoctorsScreen(isHumanMode: true),
-    const AppointmentsListScreen(),
-    const NotificationsScreen(),
-    const UserTypeSelectionScreen(),
+  final List<Widget> _screens = [
+    const DoctorHomeScreen(),
+    const DoctorAppointmentsScreen(),
+    const DoctorNotificationsScreen(),
+    const DoctorProfileScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -129,7 +127,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                   bottom: 0,
                   child: Center(
                     child: Container(
-                      width: 55,
+                      width: 60,
                       height: 50,
                       decoration: BoxDecoration(
                         color: AppColors.tealAccent.withValues(alpha: 0.15),
@@ -146,11 +144,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildNavItem(0, Icons.home_rounded, 'Home'),
-                    _buildNavItem(1, Icons.search_rounded, 'Search'),
-                    _buildNavItem(2, Icons.calendar_month_rounded, 'Bookings'),
-                    _buildNavItem(3, Icons.notifications_rounded, 'Alerts'),
-                    _buildNavItem(4, Icons.person_rounded, 'Profile'),
+                    _buildNavItem(0, Icons.dashboard_rounded, 'Dashboard'),
+                    _buildNavItem(1, Icons.calendar_month_rounded, 'Appointments'),
+                    _buildNavItem(2, Icons.notifications_rounded, 'Alerts'),
+                    _buildNavItem(3, Icons.person_rounded, 'Profile'),
                   ],
                 ),
               ],
@@ -163,8 +160,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   double _getIndicatorPosition() {
     final screenWidth = MediaQuery.of(context).size.width;
-    final itemWidth = (screenWidth - (AppSpacing.lg * 2)) / 5;
-    return (_currentIndex * itemWidth) + (itemWidth / 2) - 27.5;
+    final itemWidth = (screenWidth - (AppSpacing.lg * 2)) / 4;
+    return (_currentIndex * itemWidth) + (itemWidth / 2) - 30;
   }
 
   Widget _buildNavItem(int index, IconData icon, String label) {
@@ -227,8 +224,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                                 color: isSelected
                                     ? AppColors.tealAccent
                                     : isHovered
-                                        ? AppColors.tealAccent
-                                            .withValues(alpha: 0.7)
+                                        ? AppColors.tealAccent.withValues(alpha: 0.7)
                                         : AppColors.textTertiary,
                               ),
                             ),
@@ -245,9 +241,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                               : isHovered
                                   ? AppColors.tealAccent.withValues(alpha: 0.7)
                                   : AppColors.textTertiary,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w400,
-                          fontSize: isSelected ? 10 : 9,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                          fontSize: isSelected ? 9 : 8,
                           height: 1.2,
                         ),
                         child: Text(label),

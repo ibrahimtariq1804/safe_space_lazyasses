@@ -31,6 +31,8 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
       case AppointmentStatus.completed:
         return AppColors.tealAccent;
       case AppointmentStatus.cancelled:
+        return AppColors.textTertiary;
+      case AppointmentStatus.rejected:
         return AppColors.error;
       case AppointmentStatus.delayed:
         return Colors.orange;
@@ -42,13 +44,32 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
       case AppointmentStatus.confirmed:
         return 'Confirmed';
       case AppointmentStatus.pending:
-        return 'Pending';
+        return 'Pending Confirmation';
       case AppointmentStatus.completed:
         return 'Completed';
       case AppointmentStatus.cancelled:
         return 'Cancelled';
+      case AppointmentStatus.rejected:
+        return 'Rejected by Doctor';
       case AppointmentStatus.delayed:
         return 'Delayed';
+    }
+  }
+
+  IconData _getStatusIcon() {
+    switch (widget.appointment.status) {
+      case AppointmentStatus.confirmed:
+        return Icons.check_circle_outline;
+      case AppointmentStatus.pending:
+        return Icons.schedule;
+      case AppointmentStatus.completed:
+        return Icons.done_all;
+      case AppointmentStatus.cancelled:
+        return Icons.cancel_outlined;
+      case AppointmentStatus.rejected:
+        return Icons.block;
+      case AppointmentStatus.delayed:
+        return Icons.access_time;
     }
   }
 
@@ -101,6 +122,8 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
   Widget build(BuildContext context) {
     final isPast = widget.appointment.dateTime.isBefore(DateTime.now());
     final isCancelled = widget.appointment.status == AppointmentStatus.cancelled;
+    final isRejected = widget.appointment.status == AppointmentStatus.rejected;
+    final isCompleted = widget.appointment.status == AppointmentStatus.completed;
 
     return Scaffold(
       appBar: AppBar(
@@ -125,7 +148,7 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
               child: Row(
                 children: [
                   Icon(
-                    Icons.check_circle_outline,
+                    _getStatusIcon(),
                     color: _getStatusColor(),
                   ),
                   const SizedBox(width: AppSpacing.md),
@@ -138,6 +161,54 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                 ],
               ),
             ),
+
+            // Rejection Reason Banner
+            if (widget.appointment.status == AppointmentStatus.rejected &&
+                widget.appointment.rejectionReason != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                margin: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.xxl,
+                  vertical: AppSpacing.lg,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: AppColors.error,
+                          size: 20,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Text(
+                          'Rejection Reason',
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      widget.appointment.rejectionReason!,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
             const SizedBox(height: AppSpacing.xxl),
 
@@ -254,7 +325,7 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
             const SizedBox(height: AppSpacing.xxxl),
 
             // Action Buttons
-            if (!isPast && !isCancelled)
+            if (!isPast && !isCancelled && !isRejected && !isCompleted)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
                 child: Column(

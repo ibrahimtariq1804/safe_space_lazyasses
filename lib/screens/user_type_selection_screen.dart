@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
-import 'home_screen.dart';
+import 'main_navigation_screen.dart';
+import 'pet_main_navigation_screen.dart';
 
 class UserTypeSelectionScreen extends StatelessWidget {
   const UserTypeSelectionScreen({Key? key}) : super(key: key);
@@ -42,9 +43,9 @@ class UserTypeSelectionScreen extends StatelessWidget {
                     description: 'Access medical professionals for your health needs',
                     color: AppColors.tealAccent,
                     onTap: () {
-                      Navigator.of(context).pushReplacement(
+                      Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => const HomeScreen(isHumanMode: true),
+                          builder: (_) => const MainNavigationScreen(),
                         ),
                       );
                     },
@@ -61,9 +62,9 @@ class UserTypeSelectionScreen extends StatelessWidget {
                     description: 'Find veterinary care for your beloved pets',
                     color: AppColors.tealAccentLight,
                     onTap: () {
-                      Navigator.of(context).pushReplacement(
+                      Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => const HomeScreen(isHumanMode: false),
+                          builder: (_) => const PetMainNavigationScreen(),
                         ),
                       );
                     },

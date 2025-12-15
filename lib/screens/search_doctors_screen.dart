@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/doctor.dart';
+import '../models/doctor_profile.dart';
+import '../services/firestore_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
@@ -22,11 +25,13 @@ class _SearchDoctorsScreenState extends State<SearchDoctorsScreen> {
 
   final List<String> _specializations = [
     'All',
+    'General Physician',
     'Cardiologist',
     'Dermatologist',
     'Pediatrician',
     'Neurologist',
-    'Dentist',
+    'Orthopedic',
+    'Psychiatrist',
   ];
 
   final List<String> _vetSpecializations = [
@@ -37,87 +42,37 @@ class _SearchDoctorsScreenState extends State<SearchDoctorsScreen> {
     'Surgery Specialist',
   ];
 
-  List<Doctor> _getDoctors() {
-    if (widget.isHumanMode) {
-      return [
-        Doctor(
-          id: '1',
-          name: 'Dr. Sarah Johnson',
-          specialization: 'Cardiologist',
-          imageUrl: '',
-          rating: 4.8,
-          experience: 12,
-          clinicLocation: 'City Medical Center, Downtown',
-          about:
-              'Experienced cardiologist specializing in heart disease prevention and treatment.',
-          availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-        ),
-        Doctor(
-          id: '2',
-          name: 'Dr. Michael Chen',
-          specialization: 'Dermatologist',
-          imageUrl: '',
-          rating: 4.9,
-          experience: 8,
-          clinicLocation: 'Skin Care Clinic, Northside',
-          about:
-              'Board-certified dermatologist with expertise in skin conditions and cosmetic procedures.',
-          availableDays: ['Mon', 'Wed', 'Fri', 'Sat'],
-        ),
-        Doctor(
-          id: '3',
-          name: 'Dr. Emily Rodriguez',
-          specialization: 'Pediatrician',
-          imageUrl: '',
-          rating: 4.7,
-          experience: 15,
-          clinicLocation: 'Children\'s Hospital, Central',
-          about:
-              'Dedicated pediatrician providing comprehensive care for children of all ages.',
-          availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-        ),
-      ];
-    } else {
-      return [
-        Doctor(
-          id: '4',
-          name: 'Dr. Robert Wilson',
-          specialization: 'General Veterinarian',
-          imageUrl: '',
-          rating: 4.9,
-          experience: 10,
-          clinicLocation: 'Pet Care Clinic, Eastside',
-          about:
-              'Compassionate veterinarian with a passion for all animals.',
-          availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-        ),
-        Doctor(
-          id: '5',
-          name: 'Dr. Lisa Anderson',
-          specialization: 'Exotic Animal Vet',
-          imageUrl: '',
-          rating: 4.8,
-          experience: 7,
-          clinicLocation: 'Exotic Pet Hospital, Westside',
-          about:
-              'Specialized care for reptiles, birds, and exotic mammals.',
-          availableDays: ['Tue', 'Wed', 'Thu', 'Sat'],
-        ),
-      ];
-    }
-  }
-
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
+  List<DoctorProfile> _filterDoctors(List<DoctorProfile> doctors) {
+    return doctors.where((doctor) {
+      // Filter by specialization
+      if (_selectedSpecialization != 'All' &&
+          doctor.specialization != _selectedSpecialization) {
+        return false;
+      }
+
+      // Filter by search text
+      if (_searchController.text.isNotEmpty) {
+        final searchLower = _searchController.text.toLowerCase();
+        return doctor.name.toLowerCase().contains(searchLower) ||
+            doctor.specialization.toLowerCase().contains(searchLower) ||
+            doctor.clinicName.toLowerCase().contains(searchLower);
+      }
+
+      return true;
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final doctors = _getDoctors();
-    final specializations =
-        widget.isHumanMode ? _specializations : _vetSpecializations;
+    final firestoreService = context.read<FirestoreService>();
+    final specializations = widget.isHumanMode ? _specializations : _vetSpecializations;
+    final doctorType = widget.isHumanMode ? 'human' : 'pet';
 
     return Scaffold(
       body: Column(
@@ -242,37 +197,105 @@ class _SearchDoctorsScreenState extends State<SearchDoctorsScreen> {
 
           const SizedBox(height: AppSpacing.lg),
 
-          // Doctors List
+          // Doctors List from Firestore
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              itemCount: doctors.length,
-              itemBuilder: (context, index) {
-                final doctor = doctors[index];
-
-                // Apply filters
-                if (_selectedSpecialization != 'All' &&
-                    doctor.specialization != _selectedSpecialization) {
-                  return const SizedBox.shrink();
+            child: StreamBuilder<List<DoctorProfile>>(
+              stream: firestoreService.getDoctorsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: AppColors.tealAccent),
+                  );
                 }
 
-                if (_searchController.text.isNotEmpty &&
-                    !doctor.name
-                        .toLowerCase()
-                        .contains(_searchController.text.toLowerCase()) &&
-                    !doctor.specialization
-                        .toLowerCase()
-                        .contains(_searchController.text.toLowerCase())) {
-                  return const SizedBox.shrink();
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 80,
+                          color: AppColors.error.withValues(alpha: 0.5),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          'Error loading doctors',
+                          style: AppTextStyles.h3.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
                 }
 
-                return DoctorCard(
-                  doctor: doctor,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => DoctorProfileScreen(doctor: doctor),
-                      ),
+                var allDoctors = snapshot.data ?? [];
+                
+                // Filter by doctor type (human/pet)
+                allDoctors = allDoctors.where((doc) => doc.doctorType == doctorType).toList();
+                
+                // Apply search and specialization filters
+                final filteredDoctors = _filterDoctors(allDoctors);
+
+                if (filteredDoctors.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          widget.isHumanMode ? Icons.person_search : Icons.pets,
+                          size: 80,
+                          color: AppColors.textTertiary.withValues(alpha: 0.5),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          'No doctors found',
+                          style: AppTextStyles.h3.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          'Try adjusting your filters',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                  itemCount: filteredDoctors.length,
+                  itemBuilder: (context, index) {
+                    final doctorProfile = filteredDoctors[index];
+                    
+                    // Convert DoctorProfile to Doctor model for compatibility
+                    final doctor = Doctor(
+                      id: doctorProfile.id,
+                      name: doctorProfile.name,
+                      specialization: doctorProfile.specialization,
+                      imageUrl: doctorProfile.photoUrl ?? '',
+                      rating: doctorProfile.rating,
+                      experience: doctorProfile.experience,
+                      clinicLocation: '${doctorProfile.clinicName}, ${doctorProfile.clinicAddress}',
+                      about: doctorProfile.about ?? 'Experienced ${doctorProfile.specialization}',
+                      availableDays: doctorProfile.availableDays,
+                      isAvailable: doctorProfile.isAvailable,
+                    );
+
+                    return DoctorCard(
+                      doctor: doctor,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => DoctorProfileScreen(doctor: doctor),
+                          ),
+                        );
+                      },
                     );
                   },
                 );

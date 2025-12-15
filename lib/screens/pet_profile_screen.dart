@@ -1,53 +1,173 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/pet.dart';
 import '../utils/app_colors.dart';
 import '../utils/app_spacing.dart';
 import '../utils/app_text_styles.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
 import 'edit_pet_profile_screen.dart';
-import 'appointments_list_screen.dart';
+import 'pet_appointments_list_screen.dart';
 import 'pet_medical_records_screen.dart';
+import 'splash_screen.dart';
 
 class PetProfileScreen extends StatelessWidget {
   const PetProfileScreen({Key? key}) : super(key: key);
 
-  Pet _getSamplePet() {
-    return Pet(
-      id: '1',
-      name: 'Max',
-      species: 'Dog',
-      breed: 'Golden Retriever',
-      age: 3,
-      imageUrl: '',
-      vaccinations: [
-        VaccinationRecord(
-          name: 'Rabies Vaccine',
-          date: DateTime.now().subtract(const Duration(days: 365)),
-          completed: true,
+  void _handleSignOut(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         ),
-        VaccinationRecord(
-          name: 'Distemper Vaccine',
-          date: DateTime.now().subtract(const Duration(days: 180)),
-          completed: true,
+        title: Text('Sign Out', style: AppTextStyles.h3.copyWith(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to sign out?',
+          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
         ),
-        VaccinationRecord(
-          name: 'Parvovirus Vaccine',
-          date: DateTime.now().subtract(const Duration(days: 90)),
-          completed: true,
-        ),
-        VaccinationRecord(
-          name: 'Bordetella Vaccine',
-          date: DateTime.now().add(const Duration(days: 30)),
-          completed: false,
-        ),
-      ],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancel', style: AppTextStyles.button.copyWith(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
     );
+
+    if (confirmed == true && context.mounted) {
+      final authService = context.read<AuthService>();
+      await authService.signOut();
+      if (context.mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const SplashScreen()),
+          (route) => false,
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final pet = _getSamplePet();
+    final authService = context.read<AuthService>();
+    final firestoreService = context.read<FirestoreService>();
+    final user = authService.currentUser;
 
+    if (user == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Pet Profile')),
+        body: const Center(child: Text('Please log in')),
+      );
+    }
+
+    return StreamBuilder<Pet?>(
+      stream: firestoreService.getPetProfileStream(user.uid),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Pet Profile')),
+            body: const Center(
+              child: CircularProgressIndicator(color: AppColors.tealAccent),
+            ),
+          );
+        }
+
+        // No pet profile exists - show create form
+        if (!snapshot.hasData || snapshot.data == null) {
+          return _buildNoPetProfile(context, user.uid);
+        }
+
+        final pet = snapshot.data!;
+        return _buildPetProfileContent(context, pet);
+      },
+    );
+  }
+
+  Widget _buildNoPetProfile(BuildContext context, String userId) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pet Profile'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _handleSignOut(context),
+          ),
+        ],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.graphite,
+                  border: Border.all(
+                    color: AppColors.tealAccent.withValues(alpha: 0.5),
+                    width: 3,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.pets,
+                  size: 60,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+              Text(
+                'No Pet Profile Yet',
+                style: AppTextStyles.h2,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'Add your furry friend\'s information to get started with pet healthcare services.',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.xxxl),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => CreatePetProfileScreen(userId: userId),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Pet Profile'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.tealAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xxl,
+                    vertical: AppSpacing.lg,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPetProfileContent(BuildContext context, Pet pet) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pet Profile'),
@@ -61,6 +181,10 @@ class PetProfileScreen extends StatelessWidget {
                 ),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _handleSignOut(context),
           ),
         ],
       ),
@@ -96,24 +220,32 @@ class PetProfileScreen extends StatelessWidget {
                         width: 3,
                       ),
                     ),
-                    child: const Icon(
-                      Icons.pets,
-                      size: 60,
-                      color: AppColors.tealAccent,
-                    ),
+                    child: pet.imageUrl.isNotEmpty
+                        ? ClipOval(
+                            child: Image.network(
+                              pet.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                Icons.pets,
+                                size: 60,
+                                color: AppColors.tealAccent,
+                              ),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.pets,
+                            size: 60,
+                            color: AppColors.tealAccent,
+                          ),
                   ),
                   const SizedBox(height: AppSpacing.lg),
-
-                  // Pet Name
                   Text(
                     pet.name,
-                    style: AppTextStyles.h1.copyWith(fontSize: 28),
+                    style: AppTextStyles.h1,
                   ),
-                  const SizedBox(height: AppSpacing.xs),
-
-                  // Pet Details
+                  const SizedBox(height: AppSpacing.sm),
                   Text(
-                    '${pet.breed} • ${pet.age} years old',
+                    '${pet.breed} • ${pet.species}',
                     style: AppTextStyles.bodyMedium.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -122,270 +254,335 @@ class PetProfileScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: AppSpacing.xxl),
-
-            // Basic Information
+            // Pet Details
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+              padding: const EdgeInsets.all(AppSpacing.xxl),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Basic Information',
-                    style: AppTextStyles.h3,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  _InfoCard(
-                    items: [
-                      {'label': 'Species', 'value': pet.species},
-                      {'label': 'Breed', 'value': pet.breed},
-                      {'label': 'Age', 'value': '${pet.age} years'},
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: AppSpacing.xxxl),
-
-            // Vaccination Timeline
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  // Basic Info Card
+                  _buildInfoCard(
+                    title: 'Basic Information',
                     children: [
-                      Text(
-                        'Vaccination Records',
-                        style: AppTextStyles.h3,
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md,
-                          vertical: AppSpacing.xs,
+                      _buildInfoRow('Age', '${pet.age} years'),
+                      if (pet.gender != null)
+                        _buildInfoRow('Gender', pet.gender!),
+                      if (pet.weight != null)
+                        _buildInfoRow('Weight', '${pet.weight} kg'),
+                      if (pet.dateOfBirth != null)
+                        _buildInfoRow(
+                          'Date of Birth',
+                          DateFormat('MMM d, y').format(pet.dateOfBirth!),
                         ),
-                        decoration: BoxDecoration(
-                          color: AppColors.success.withValues(alpha: 0.1),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusXs),
-                        ),
-                        child: Text(
-                          '${pet.vaccinations.where((v) => v.completed).length}/${pet.vaccinations.length} Complete',
-                          style: AppTextStyles.bodySmall.copyWith(
-                            color: AppColors.success,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
                     ],
                   ),
+
                   const SizedBox(height: AppSpacing.lg),
 
-                  // Vaccination Timeline
-                  ...pet.vaccinations.map((vaccination) {
-                    return _VaccinationTimelineItem(
-                      vaccination: vaccination,
-                      isLast: vaccination == pet.vaccinations.last,
-                    );
-                  }).toList(),
-                ],
-              ),
-            ),
+                  // Medical Info
+                  if (pet.medicalConditions != null && pet.medicalConditions!.isNotEmpty)
+                    _buildInfoCard(
+                      title: 'Medical Conditions',
+                      children: pet.medicalConditions!
+                          .map((condition) => _buildChip(condition))
+                          .toList(),
+                      isChips: true,
+                    ),
 
-            const SizedBox(height: AppSpacing.xxxl),
+                  if (pet.allergies != null && pet.allergies!.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    _buildInfoCard(
+                      title: 'Allergies',
+                      children: pet.allergies!
+                          .map((allergy) => _buildChip(allergy, isWarning: true))
+                          .toList(),
+                      isChips: true,
+                    ),
+                  ],
 
-            // Medical Records
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Medical Records',
-                        style: AppTextStyles.h3,
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const PetMedicalRecordsScreen(),
-                            ),
-                          );
-                        },
-                        child: Text(
-                          'View All',
-                          style: TextStyle(color: AppColors.tealAccent),
-                        ),
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: AppSpacing.lg),
-                  _PetMedicalRecordItem(
-                    icon: Icons.local_hospital,
-                    title: 'Annual Wellness Check',
-                    date: 'Nov 2, 2024',
-                    doctor: 'Dr. Emily Parker',
-                    type: 'Checkup',
-                    color: AppColors.success,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  _PetMedicalRecordItem(
-                    icon: Icons.vaccines,
-                    title: 'Rabies Vaccination',
-                    date: 'Oct 10, 2024',
-                    doctor: 'Dr. Emily Parker',
-                    type: 'Vaccination',
-                    color: Color(0xFF60A5FA),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  _PetMedicalRecordItem(
-                    icon: Icons.pets,
-                    title: 'Dental Cleaning',
-                    date: 'Sep 5, 2024',
-                    doctor: 'Dr. James Wilson',
-                    type: 'Procedure',
-                    color: Color(0xFFF59E0B),
-                  ),
-                ],
-              ),
-            ),
 
-            const SizedBox(height: AppSpacing.xxxl),
+                  // Vaccination Records
+                  if (pet.vaccinations.isNotEmpty)
+                    _buildVaccinationCard(pet.vaccinations),
 
-            // Allergies & Conditions
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Allergies',
-                          style: AppTextStyles.h3,
-                        ),
-                        const SizedBox(height: AppSpacing.lg),
-                        _PetInfoChip(
-                          icon: Icons.warning_amber_rounded,
-                          label: 'Chicken',
-                          color: AppColors.error,
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        _PetInfoChip(
-                          icon: Icons.warning_amber_rounded,
-                          label: 'Grass pollen',
-                          color: AppColors.error,
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        _PetInfoChip(
-                          icon: Icons.warning_amber_rounded,
-                          label: 'Dust mites',
-                          color: AppColors.error,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.lg),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Health Conditions',
-                          style: AppTextStyles.h3,
-                        ),
-                        const SizedBox(height: AppSpacing.lg),
-                        _PetInfoChip(
-                          icon: Icons.medical_information,
-                          label: 'Arthritis',
-                          color: Color(0xFFF59E0B),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        _PetInfoChip(
-                          icon: Icons.medical_information,
-                          label: 'Skin allergies',
-                          color: Color(0xFFF59E0B),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        _PetInfoChip(
-                          icon: Icons.medical_information,
-                          label: 'Hip dysplasia',
-                          color: Color(0xFFF59E0B),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                  const SizedBox(height: AppSpacing.lg),
 
-            const SizedBox(height: AppSpacing.xxxl),
-
-            // Quick Actions - Redesigned
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                  // Quick Actions
                   Text(
                     'Quick Actions',
                     style: AppTextStyles.h3,
                   ),
                   const SizedBox(height: AppSpacing.lg),
-                  _ImprovedPetActionCard(
-                    icon: Icons.calendar_month,
-                    title: 'Book Vet Appointment',
-                    subtitle: 'Schedule a visit with a veterinarian',
-                          color: AppColors.tealAccent,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const AppointmentsListScreen(),
-                              ),
-                            );
-                          },
+                  _buildActionCard(
+                    icon: Icons.calendar_today,
+                    title: 'View Appointments',
+                    subtitle: 'Check your pet\'s vet visits',
+                    color: AppColors.tealAccent,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PetAppointmentsListScreen(),
                         ),
+                      );
+                    },
+                  ),
                   const SizedBox(height: AppSpacing.md),
-                  _ImprovedPetActionCard(
-                    icon: Icons.shopping_bag,
-                    title: 'Pet Supplies Store',
-                    subtitle: 'Shop for food, toys, and accessories',
-                          color: Color(0xFF60A5FA),
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                          content: Text('Pet store coming soon!'),
-                                backgroundColor: AppColors.tealAccent,
-                              ),
-                            );
-                          },
+                  _buildActionCard(
+                    icon: Icons.folder_outlined,
+                    title: 'Medical Records',
+                    subtitle: 'View pet health history',
+                    color: const Color(0xFF8B5CF6),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PetMedicalRecordsScreen(),
                         ),
-                  const SizedBox(height: AppSpacing.md),
-                  _ImprovedPetActionCard(
-                          icon: Icons.notifications_active,
-                    title: 'Vaccination Reminders',
-                    subtitle: 'Set alerts for upcoming shots',
-                          color: Color(0xFFF59E0B),
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Reminder feature coming soon!'),
-                                backgroundColor: AppColors.tealAccent,
-                              ),
-                            );
-                          },
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: AppSpacing.xxxl),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard({
+    required String title,
+    required List<Widget> children,
+    bool isChips = false,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(
+          color: AppColors.inputBorder.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: AppTextStyles.h4,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (isChips)
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: children,
+            )
+          else
+            ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          Text(
+            value,
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(String text, {bool isWarning = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: isWarning
+            ? AppColors.error.withValues(alpha: 0.2)
+            : AppColors.tealAccent.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+      ),
+      child: Text(
+        text,
+        style: AppTextStyles.caption.copyWith(
+          color: isWarning ? AppColors.error : AppColors.tealAccent,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVaccinationCard(List<VaccinationRecord> vaccinations) {
+    final completed = vaccinations.where((v) => v.completed).length;
+    final total = vaccinations.length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(
+          color: AppColors.inputBorder.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Vaccinations',
+                style: AppTextStyles.h4,
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.tealAccent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: Text(
+                  '$completed/$total',
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.tealAccent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          ...vaccinations.map((v) => _buildVaccinationRow(v)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVaccinationRow(VaccinationRecord vaccination) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Row(
+        children: [
+          Icon(
+            vaccination.completed ? Icons.check_circle : Icons.schedule,
+            size: 20,
+            color: vaccination.completed ? AppColors.success : AppColors.textSecondary,
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  vaccination.name,
+                  style: AppTextStyles.bodyMedium,
+                ),
+                Text(
+                  DateFormat('MMM d, y').format(vaccination.date),
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xs,
+            ),
+            decoration: BoxDecoration(
+              color: vaccination.completed
+                  ? AppColors.success.withValues(alpha: 0.2)
+                  : const Color(0xFFF59E0B).withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            ),
+            child: Text(
+              vaccination.completed ? 'Done' : 'Pending',
+              style: AppTextStyles.caption.copyWith(
+                color: vaccination.completed ? AppColors.success : const Color(0xFFF59E0B),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(
+            color: color.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: AppSpacing.lg),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTextStyles.h4),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    subtitle,
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(height: AppSpacing.xxxl),
+            Icon(
+              Icons.chevron_right,
+              color: AppColors.textSecondary,
+            ),
           ],
         ),
       ),
@@ -393,417 +590,259 @@ class PetProfileScreen extends StatelessWidget {
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  final List<Map<String, String>> items;
+// Create Pet Profile Screen
+class CreatePetProfileScreen extends StatefulWidget {
+  final String userId;
 
-  const _InfoCard({Key? key, required this.items}) : super(key: key);
+  const CreatePetProfileScreen({Key? key, required this.userId}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: items.asMap().entries.map((entry) {
-            final index = entry.key;
-            final item = entry.value;
-            return Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      item['label']!,
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      item['value']!,
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                if (index < items.length - 1) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  const Divider(),
-                  const SizedBox(height: AppSpacing.md),
-                ],
-              ],
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
+  State<CreatePetProfileScreen> createState() => _CreatePetProfileScreenState();
 }
 
-class _VaccinationTimelineItem extends StatelessWidget {
-  final VaccinationRecord vaccination;
-  final bool isLast;
+class _CreatePetProfileScreenState extends State<CreatePetProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _breedController = TextEditingController();
+  final _ageController = TextEditingController();
+  final _weightController = TextEditingController();
+  
+  String _species = 'Dog';
+  String _gender = 'Male';
+  bool _isLoading = false;
 
-  const _VaccinationTimelineItem({
-    Key? key,
-    required this.vaccination,
-    required this.isLast,
-  }) : super(key: key);
+  final List<String> _speciesOptions = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Hamster', 'Fish', 'Other'];
+  final List<String> _genderOptions = ['Male', 'Female'];
 
   @override
-  Widget build(BuildContext context) {
-    final isPast = vaccination.date.isBefore(DateTime.now());
-    final isUpcoming = !isPast;
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Timeline
-          Column(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: vaccination.completed
-                      ? AppColors.success
-                      : isUpcoming
-                          ? AppColors.warning
-                          : AppColors.textTertiary,
-                ),
-                child: Icon(
-                  vaccination.completed
-                      ? Icons.check
-                      : isUpcoming
-                          ? Icons.schedule
-                          : Icons.close,
-                  color: AppColors.deepCharcoal,
-                  size: 14,
-                ),
-              ),
-              if (!isLast)
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    color: AppColors.divider,
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                  ),
-                ),
-            ],
-          ),
-
-          const SizedBox(width: AppSpacing.lg),
-
-          // Content
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
-              child: Container(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                  border: Border.all(
-                    color: vaccination.completed
-                        ? AppColors.success.withValues(alpha: 0.3)
-                        : isUpcoming
-                            ? AppColors.warning.withValues(alpha: 0.3)
-                            : AppColors.divider,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            vaccination.name,
-                            style: AppTextStyles.h4.copyWith(fontSize: 16),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.sm,
-                            vertical: AppSpacing.xs,
-                          ),
-                          decoration: BoxDecoration(
-                            color: (vaccination.completed
-                                    ? AppColors.success
-                                    : isUpcoming
-                                        ? AppColors.warning
-                                        : AppColors.textTertiary)
-                                .withValues(alpha: 0.1),
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusXs),
-                          ),
-                          child: Text(
-                            vaccination.completed
-                                ? 'Done'
-                                : isUpcoming
-                                    ? 'Upcoming'
-                                    : 'Overdue',
-                            style: AppTextStyles.caption.copyWith(
-                              color: vaccination.completed
-                                  ? AppColors.success
-                                  : isUpcoming
-                                      ? AppColors.warning
-                                      : AppColors.error,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today,
-                          size: 14,
-                          color: AppColors.textTertiary,
-                        ),
-                        const SizedBox(width: AppSpacing.xs),
-                        Text(
-                          DateFormat('MMM d, yyyy').format(vaccination.date),
-                          style: AppTextStyles.bodySmall.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  void dispose() {
+    _nameController.dispose();
+    _breedController.dispose();
+    _ageController.dispose();
+    _weightController.dispose();
+    super.dispose();
   }
-}
 
+  Future<void> _savePet() async {
+    if (!_formKey.currentState!.validate()) return;
 
-class _PetMedicalRecordItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String date;
-  final String doctor;
-  final String type;
-  final Color color;
+    setState(() => _isLoading = true);
 
-  const _PetMedicalRecordItem({
-    Key? key,
-    required this.icon,
-    required this.title,
-    required this.date,
-    required this.doctor,
-    required this.type,
-    required this.color,
-  }) : super(key: key);
+    try {
+      final firestoreService = context.read<FirestoreService>();
+
+      final pet = Pet(
+        id: '',
+        name: _nameController.text.trim(),
+        species: _species,
+        breed: _breedController.text.trim(),
+        age: int.tryParse(_ageController.text) ?? 0,
+        imageUrl: '',
+        vaccinations: [],
+        ownerId: widget.userId,
+        gender: _gender,
+        weight: double.tryParse(_weightController.text),
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      await firestoreService.createPetProfile(pet);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pet profile created successfully!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Opening $title'),
-              backgroundColor: AppColors.tealAccent,
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Row(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Add Pet'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 24,
+              // Pet Avatar
+              Center(
+                child: Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.graphite,
+                    border: Border.all(
+                      color: AppColors.tealAccent,
+                      width: 3,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.pets,
+                    size: 50,
+                    color: AppColors.tealAccent,
+                  ),
                 ),
               ),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: AppTextStyles.h4.copyWith(fontSize: 15),
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      doctor,
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: AppSpacing.xxl),
+
+              // Name
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Pet Name',
+                  prefixIcon: Icon(Icons.pets),
                 ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter your pet\'s name';
+                  }
+                  return null;
+                },
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              const SizedBox(height: AppSpacing.lg),
+
+              // Species Dropdown
+              DropdownButtonFormField<String>(
+                value: _species,
+                decoration: const InputDecoration(
+                  labelText: 'Species',
+                  prefixIcon: Icon(Icons.category),
+                ),
+                items: _speciesOptions.map((species) {
+                  return DropdownMenuItem(value: species, child: Text(species));
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _species = value);
+                  }
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+
+              // Breed
+              TextFormField(
+                controller: _breedController,
+                decoration: const InputDecoration(
+                  labelText: 'Breed',
+                  prefixIcon: Icon(Icons.pets_outlined),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter the breed';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+
+              // Gender Dropdown
+              DropdownButtonFormField<String>(
+                value: _gender,
+                decoration: const InputDecoration(
+                  labelText: 'Gender',
+                  prefixIcon: Icon(Icons.male),
+                ),
+                items: _genderOptions.map((gender) {
+                  return DropdownMenuItem(value: gender, child: Text(gender));
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _gender = value);
+                  }
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+
+              // Age and Weight Row
+              Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                      vertical: AppSpacing.xs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
-                    ),
-                    child: Text(
-                      type,
-                      style: AppTextStyles.caption.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: TextFormField(
+                      controller: _ageController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Age (years)',
+                        prefixIcon: Icon(Icons.cake),
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Required';
+                        }
+                        return null;
+                      },
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    date,
-                    style: AppTextStyles.caption.copyWith(
-                      color: AppColors.textTertiary,
+                  const SizedBox(width: AppSpacing.lg),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _weightController,
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Weight (kg)',
+                        prefixIcon: Icon(Icons.monitor_weight),
+                      ),
                     ),
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+              const SizedBox(height: AppSpacing.xxxl),
 
-class _ImprovedPetActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ImprovedPetActionCard({
-    Key? key,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-          ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: AppTextStyles.h4.copyWith(fontSize: 16),
+              // Save Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _savePet,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.tealAccent,
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                     ),
-                    const SizedBox(height: AppSpacing.xs),
-              Text(
-                      subtitle,
-                style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Save Pet Profile',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios,
-                color: AppColors.textTertiary,
-                size: 16,
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _PetInfoChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _PetInfoChip({
-    Key? key,
-    required this.icon,
-    required this.label,
-    required this.color,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-        border: Border.all(
-          color: color.withValues(alpha: 0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: color,
-            size: 16,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Text(
-            label,
-            style: AppTextStyles.bodySmall.copyWith(
-              color: color,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
       ),
     );
   }

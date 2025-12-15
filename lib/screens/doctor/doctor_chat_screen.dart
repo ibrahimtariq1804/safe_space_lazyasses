@@ -1,29 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/chat_message.dart';
-import '../services/auth_service.dart';
-import '../services/firestore_service.dart';
-import '../utils/app_colors.dart';
-import '../utils/app_spacing.dart';
-import '../utils/app_text_styles.dart';
+import '../../models/chat_message.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
+import '../../utils/app_colors.dart';
+import '../../utils/app_spacing.dart';
+import '../../utils/app_text_styles.dart';
 
-class TelemedicineChatScreen extends StatefulWidget {
-  final String doctorId;
-  final String doctorName;
-  final String doctorSpecialization;
+class DoctorChatScreen extends StatefulWidget {
+  final String patientId;
+  final String patientName;
 
-  const TelemedicineChatScreen({
+  const DoctorChatScreen({
     Key? key,
-    required this.doctorId,
-    required this.doctorName,
-    required this.doctorSpecialization,
+    required this.patientId,
+    required this.patientName,
   }) : super(key: key);
 
   @override
-  State<TelemedicineChatScreen> createState() => _TelemedicineChatScreenState();
+  State<DoctorChatScreen> createState() => _DoctorChatScreenState();
 }
 
-class _TelemedicineChatScreenState extends State<TelemedicineChatScreen> {
+class _DoctorChatScreenState extends State<DoctorChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -52,8 +50,8 @@ class _TelemedicineChatScreenState extends State<TelemedicineChatScreen> {
     if (currentUserId != null) {
       try {
         await firestoreService.markMessagesAsRead(
-          patientId: currentUserId,
-          doctorId: widget.doctorId,
+          patientId: widget.patientId,
+          doctorId: currentUserId,
           currentUserId: currentUserId,
         );
       } catch (e) {
@@ -96,9 +94,9 @@ class _TelemedicineChatScreenState extends State<TelemedicineChatScreen> {
     try {
       await firestoreService.sendMessage(
         senderId: currentUserId,
-        receiverId: widget.doctorId,
+        receiverId: widget.patientId,
         message: messageText,
-        senderType: 'patient',
+        senderType: 'doctor',
       );
 
       // Scroll to bottom after sending
@@ -187,7 +185,7 @@ class _TelemedicineChatScreenState extends State<TelemedicineChatScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Dr. ${widget.doctorName}',
+                        widget.patientName,
                         style: AppTextStyles.h4.copyWith(fontSize: 16),
                       ),
                       Row(
@@ -201,13 +199,10 @@ class _TelemedicineChatScreenState extends State<TelemedicineChatScreen> {
                             ),
                           ),
                           const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              widget.doctorSpecialization,
-                              style: AppTextStyles.caption.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                          Text(
+                            'Patient',
+                            style: AppTextStyles.caption.copyWith(
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -237,8 +232,8 @@ class _TelemedicineChatScreenState extends State<TelemedicineChatScreen> {
           Expanded(
             child: StreamBuilder<List<ChatMessage>>(
               stream: firestoreService.getChatMessagesStream(
-                patientId: currentUserId,
-                doctorId: widget.doctorId,
+                patientId: widget.patientId,
+                doctorId: currentUserId,
               ),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -263,6 +258,14 @@ class _TelemedicineChatScreenState extends State<TelemedicineChatScreen> {
                           style: AppTextStyles.bodyMedium.copyWith(
                             color: AppColors.textSecondary,
                           ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          '${snapshot.error}',
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.textTertiary,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
@@ -290,7 +293,7 @@ class _TelemedicineChatScreenState extends State<TelemedicineChatScreen> {
                         ),
                         const SizedBox(height: AppSpacing.sm),
                         Text(
-                          'Start the conversation with Dr. ${widget.doctorName}',
+                          'Start the conversation with ${widget.patientName}',
                           style: AppTextStyles.bodyMedium.copyWith(
                             color: AppColors.textTertiary,
                           ),
@@ -452,7 +455,7 @@ class _TelemedicineChatScreenState extends State<TelemedicineChatScreen> {
             ],
           ),
           content: Text(
-            'Connect with Dr. ${widget.doctorName}',
+            'Connect with ${widget.patientName}',
             style: AppTextStyles.bodyMedium.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -585,3 +588,4 @@ class _ChatBubble extends StatelessWidget {
     );
   }
 }
+

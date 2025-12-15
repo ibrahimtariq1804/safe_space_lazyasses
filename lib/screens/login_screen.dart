@@ -8,6 +8,7 @@ import '../widgets/custom_text_field.dart';
 import '../services/auth_service.dart';
 import 'signup_screen.dart';
 import 'main_navigation_screen.dart';
+import 'doctor/doctor_login_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -42,10 +43,11 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         
         if (mounted) {
-          Navigator.of(context).pushReplacement(
+          Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (_) => const MainNavigationScreen(),
             ),
+            (route) => false,
           );
         }
       } catch (e) {
@@ -73,10 +75,11 @@ class _LoginScreenState extends State<LoginScreen> {
       final userCredential = await authService.signInWithGoogle();
       
       if (userCredential != null && mounted) {
-        Navigator.of(context).pushReplacement(
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (_) => const MainNavigationScreen(),
           ),
+          (route) => false,
         );
       }
     } catch (e) {
@@ -301,6 +304,45 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: AppSpacing.xxl),
+                
+                // Doctor Login Link
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBackground,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                    border: Border.all(
+                      color: AppColors.inputBorder,
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DoctorLoginScreen(),
+                        ),
+                      );
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.medical_services_outlined,
+                          color: AppColors.tealAccent,
+                          size: 20,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Text(
+                          'Are you a doctor? Login here',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: AppColors.tealAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),

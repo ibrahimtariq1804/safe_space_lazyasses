@@ -1,61 +1,68 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../utils/app_colors.dart';
-import '../utils/app_spacing.dart';
-import '../utils/app_text_styles.dart';
-import '../widgets/custom_button.dart';
-import '../widgets/custom_text_field.dart';
-import '../services/auth_service.dart';
+import '../../utils/app_colors.dart';
+import '../../utils/app_spacing.dart';
+import '../../utils/app_text_styles.dart';
+import '../../widgets/custom_button.dart';
+import '../../widgets/custom_text_field.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
+import 'doctor_signup_screen.dart';
+import 'doctor_main_navigation_screen.dart';
 
-class SignupScreen extends StatefulWidget {
-  const SignupScreen({Key? key}) : super(key: key);
+class DoctorLoginScreen extends StatefulWidget {
+  const DoctorLoginScreen({Key? key}) : super(key: key);
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  State<DoctorLoginScreen> createState() => _DoctorLoginScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen> {
+class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
   bool _isLoading = false;
 
   @override
   void dispose() {
-    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleSignup() async {
+  Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       
       try {
         final authService = context.read<AuthService>();
-        await authService.signUpWithEmail(
+        final firestoreService = context.read<FirestoreService>();
+        
+        await authService.signInWithEmail(
           email: _emailController.text.trim(),
           password: _passwordController.text,
-          name: _nameController.text.trim(),
         );
         
+        // Verify this user is a doctor
+        final userId = authService.currentUser?.uid;
+        if (userId == null) {
+          throw 'Authentication failed';
+        }
+
+        final isDoctor = await firestoreService.isDoctor(userId);
+        if (!isDoctor) {
+          await authService.signOut();
+          throw 'This account is not registered as a doctor. Please use the patient login or register as a doctor.';
+        }
+        
         if (mounted) {
-          // Show success message
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Account created successfully! Please log in.'),
-              backgroundColor: AppColors.success,
-              duration: Duration(seconds: 3),
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) => const DoctorMainNavigationScreen(),
             ),
+            (route) => false,
           );
-          // Go back to login screen
-          Navigator.of(context).pop();
         }
       } catch (e) {
         if (mounted) {
@@ -70,6 +77,41 @@ class _SignupScreenState extends State<SignupScreen> {
         if (mounted) {
           setState(() => _isLoading = false);
         }
+      }
+    }
+  }
+
+  Future<void> _handleForgotPassword() async {
+    if (_emailController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your email address'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final authService = context.read<AuthService>();
+      await authService.resetPassword(_emailController.text.trim());
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password reset email sent. Please check your inbox.'),
+            backgroundColor: AppColors.tealAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.error,
+          ),
+        );
       }
     }
   }
@@ -94,36 +136,38 @@ class _SignupScreenState extends State<SignupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: AppSpacing.lg),
+                const SizedBox(height: AppSpacing.xl),
                 
                 // Header
+                Center(
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.tealAccent.withValues(alpha: 0.1),
+                    ),
+                    child: const Icon(
+                      Icons.medical_services_rounded,
+                      size: 40,
+                      color: AppColors.tealAccent,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xxl),
+                
                 Text(
-                  'Create Account',
+                  'Doctor Login',
                   style: AppTextStyles.h1,
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'Sign up to get started with SafeSpace',
+                  'Sign in to manage your appointments',
                   style: AppTextStyles.bodyMedium.copyWith(
                     color: AppColors.textSecondary,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxxl),
-                
-                // Name Field
-                CustomTextField(
-                  label: 'Full Name',
-                  hint: 'Enter your full name',
-                  prefixIcon: Icons.person_outline,
-                  controller: _nameController,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your name';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: AppSpacing.lg),
                 
                 // Email Field
                 CustomTextField(
@@ -147,7 +191,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Password Field
                 CustomTextField(
                   label: 'Password',
-                  hint: 'Create a password',
+                  hint: 'Enter your password',
                   prefixIcon: Icons.lock_outline,
                   suffixIcon: _obscurePassword
                       ? Icons.visibility_outlined
@@ -159,7 +203,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _passwordController,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Please enter a password';
+                      return 'Please enter your password';
                     }
                     if (value.length < 6) {
                       return 'Password must be at least 6 characters';
@@ -167,76 +211,56 @@ class _SignupScreenState extends State<SignupScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: AppSpacing.lg),
+                const SizedBox(height: AppSpacing.md),
                 
-                // Confirm Password Field
-                CustomTextField(
-                  label: 'Confirm Password',
-                  hint: 'Re-enter your password',
-                  prefixIcon: Icons.lock_outline,
-                  suffixIcon: _obscureConfirmPassword
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  onSuffixIconPressed: () {
-                    setState(
-                        () => _obscureConfirmPassword = !_obscureConfirmPassword);
-                  },
-                  obscureText: _obscureConfirmPassword,
-                  controller: _confirmPasswordController,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please confirm your password';
-                    }
-                    if (value != _passwordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: AppSpacing.xxxl),
-                
-                // Signup Button
-                CustomButton(
-                  text: 'Create Account',
-                  onPressed: _handleSignup,
-                  isLoading: _isLoading,
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                
-                // Terms and Privacy
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.lg,
-                    ),
+                // Forgot Password
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _handleForgotPassword,
                     child: Text(
-                      'By signing up, you agree to our Terms of Service and Privacy Policy',
-                      style: AppTextStyles.caption,
-                      textAlign: TextAlign.center,
+                      'Forgot Password?',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.tealAccent,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
                 
-                // Login Link
+                // Login Button
+                CustomButton(
+                  text: 'Sign In',
+                  onPressed: _handleLogin,
+                  isLoading: _isLoading,
+                ),
+                const SizedBox(height: AppSpacing.xxxl),
+                
+                // Sign Up Link
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Already have an account? ',
+                      "Don't have a doctor account? ",
                       style: AppTextStyles.bodyMedium.copyWith(
                         color: AppColors.textSecondary,
                       ),
                     ),
                     TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const DoctorSignupScreen(),
+                          ),
+                        );
+                      },
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
                         minimumSize: Size.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       child: Text(
-                        'Sign In',
+                        'Register',
                         style: AppTextStyles.bodyMedium.copyWith(
                           color: AppColors.tealAccent,
                           fontWeight: FontWeight.w600,
